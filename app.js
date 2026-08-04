@@ -98,7 +98,7 @@ const L2_APPROVERS_DEFAULT = [
 let L2_APPROVERS = L2_APPROVERS_DEFAULT.map(a => ({ ...a }));
 
 // Recipients notified whenever a requester submits a Return Notice (security + EHS return-confirmer group)
-// EHS return-confirmer group (also used as the final "EHS Manager" closing recipients)
+// EHS return-confirmer group (also used as the final "Senior Safety Professional" closing recipients)
 const EHS_GROUP = [
   { email: "kulitsara_kralam@natureworkspla.com", name: "Kulitsara Kralam" },
   { email: "kannikar_thaicharoen@natureworkspla.com", name: "Kannikar Thaicharoen (NW)" },
@@ -174,9 +174,10 @@ const STATUS_LABEL = {
   return_pending_requester: "รอผู้ขอตรวจสอบของนำเข้า",
   return_pending_security: "รอ รปภ./EHS ตรวจสอบของนำเข้า",
   return_pending_l1: "รอผจก.แผนกอนุมัติปิดคำขอ",
-  return_pending_ehs: "รอ EHS Manager ปิดคำขอ",
+  return_pending_ehs: "รอ Senior Safety Professional ปิดคำขอ",
   returned: "ปิดคำขอแล้ว (คืนของเรียบร้อย)",
-  rejected: "ปฏิเสธ"
+  rejected: "ปฏิเสธ",
+  cancelled: "ยกเลิกโดยผู้ขอ"
 };
 
 const ALLOWED_EMAIL_DOMAINS = ["natureworkspla.com", "natureworksllc.com", "natureworksco.com", "gmail.com"];
@@ -900,6 +901,8 @@ function openPassDetail(id) {
   const canApproveExtL2 = (canApproveL2) && p.ext_status === "pending_l2";
   const canRequestExtension = (p.requester_email === currentProfile.email || isTestAdmin) && !roles.includes("security") && p.requires_return &&
     p.status === "issued" && !p.ext_status && (p.ext_count || 0) < 3;
+  const canCancelRequest = (p.requester_email === currentProfile.email || isTestAdmin) &&
+    ["pending_l1", "pending_l2", "approved"].includes(p.status) && !p.ext_status;
 
   const blocks = [];
   if (canApproveExtL1 || canApproveExtL2) {
@@ -961,17 +964,17 @@ function openPassDetail(id) {
     if (canApproveReturnL1) {
       blocks.push(
         '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
-        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">รปภ./EHS ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ EHS Manager ปิดคำขอ</div>' +
+        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">รปภ./EHS ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Senior Safety Professional ปิดคำขอ</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้ตรวจใหม่)</label><input type="text" id="rejReturnL1Reason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
-          '<button class="btnSuccess" onclick="approveReturnL1(\'' + p.id + '\')">✔ รับทราบ & ส่งต่อ EHS Manager</button>' +
+          '<button class="btnSuccess" onclick="approveReturnL1(\'' + p.id + '\')">✔ รับทราบ & ส่งต่อ Senior Safety Professional</button>' +
           '<button class="btnDanger" onclick="rejectReturnL1(\'' + p.id + '\')">✕ ส่งกลับให้ตรวจใหม่</button>' +
         '</div>'
       );
     }
     if (canApproveReturnEhs) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (EHS Manager) — ขั้นตอนสุดท้าย</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (Senior Safety Professional) — ขั้นตอนสุดท้าย</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้พิจารณาใหม่)</label><input type="text" id="rejReturnEhsReason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
@@ -999,6 +1002,12 @@ function openPassDetail(id) {
         '</div>'
       );
     }
+  }
+  if (canCancelRequest) {
+    blocks.push(
+      '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)</div>' +
+      '<div class="formActions"><button class="btnDanger" onclick="cancelRequest(\'' + p.id + '\')">🗑️ ยกเลิกคำขอ</button></div>'
+    );
   }
   const actionsHtml = blocks.join('<div style="height:16px;border-top:1px solid var(--border);margin-bottom:16px;"></div>');
 
@@ -1098,6 +1107,34 @@ function extensionApprovalPanel(p, stage) {
     '<button class="btnSuccess" onclick="approveExtension(\'' + p.id + '\',\'' + stage + '\')">✔ อนุมัติการขยายเวลา</button>' +
     '<button class="btnDanger" onclick="rejectExtension(\'' + p.id + '\',\'' + stage + '\')">✕ ปฏิเสธ</button>' +
   '</div>';
+}
+
+async function cancelRequest(id) {
+  const p = allPasses.find(x => x.id === id);
+  if (!confirm("ยืนยันยกเลิกคำขอนี้? การยกเลิกไม่สามารถย้อนกลับได้")) return;
+  try {
+    await db.collection("passes").doc(id).update({
+      status: "cancelled",
+      cancelled_by: currentProfile.email,
+      cancelled_at: firebase.firestore.FieldValue.serverTimestamp(),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("ยกเลิกคำขอแล้ว", "ok");
+    closeModal();
+    if (p) {
+      const recipients = [];
+      if (p.approver_l1_email) recipients.push({ email: p.approver_l1_email, name: p.approver_l1_name });
+      if (p.approver_l2_email && p.approver_l2_email !== p.approver_l1_email) recipients.push({ email: p.approver_l2_email, name: p.approver_l2_name });
+      recipients.forEach(r => {
+        sendNotifyEmail(
+          r.email, r.name,
+          "คำขอถูกยกเลิกโดยผู้ขอ - " + p.pass_no,
+          p.requester_name + " ยกเลิกคำขอนำของออก " + p.pass_no + " แล้ว ไม่ต้องดำเนินการอนุมัติต่อ",
+          p.pass_no
+        );
+      });
+    }
+  } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
 async function submitExtensionRequest(id) {
@@ -1442,7 +1479,7 @@ async function confirmReturn(id) {
       sendNotifyEmail(
         p.requester_email, p.requester_name,
         "ผ่านการตรวจของแล้ว - " + p.pass_no,
-        "รปภ./EHS ตรวจสอบของที่นำกลับเรียบร้อยแล้ว อยู่ระหว่างรอผจก.แผนกและ EHS Manager อนุมัติปิดคำขอ",
+        "รปภ./EHS ตรวจสอบของที่นำกลับเรียบร้อยแล้ว อยู่ระหว่างรอผจก.แผนกและ Senior Safety Professional อนุมัติปิดคำขอ",
         p.pass_no
       );
     }
@@ -1458,7 +1495,7 @@ async function approveReturnL1(id) {
       return_l1_approved_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast("รับทราบแล้ว ส่งต่อให้ EHS Manager ปิดคำขอ", "ok");
+    showToast("รับทราบแล้ว ส่งต่อให้ Senior Safety Professional ปิดคำขอ", "ok");
     closeModal();
     if (p) {
       const ehsMgr = DEPARTMENTS.find(d => d.id === "ehs");
@@ -1471,7 +1508,7 @@ async function approveReturnL1(id) {
       sendNotifyEmail(
         p.requester_email, p.requester_name,
         "ใกล้ปิดคำขอแล้ว - " + p.pass_no,
-        "คำขอนำของกลับผ่านการรับทราบจากผจก.แผนกแล้ว รอ EHS Manager อนุมัติปิดคำขอขั้นตอนสุดท้าย",
+        "คำขอนำของกลับผ่านการรับทราบจากผจก.แผนกแล้ว รอ Senior Safety Professional อนุมัติปิดคำขอขั้นตอนสุดท้าย",
         p.pass_no
       );
     }
@@ -1555,7 +1592,7 @@ async function rejectReturnEhs(id) {
       sendNotifyEmail(
         p.approver_l1_email, p.approver_l1_name,
         "คำขอถูกส่งกลับให้พิจารณาใหม่ - " + p.pass_no,
-        "EHS Manager ส่งคำขอกลับให้พิจารณาใหม่ เหตุผล: " + reason,
+        "Senior Safety Professional ส่งคำขอกลับให้พิจารณาใหม่ เหตุผล: " + reason,
         p.pass_no
       );
     }
@@ -1627,8 +1664,8 @@ function renderDashboardView() {
   const issued = list.filter(p => p.status === "issued").length;
   const overdueCount = list.filter(isOverdue).length;
 
-  const statusOrder = ["pending_l1", "pending_l2", "approved", "issued", "return_pending_requester", "return_pending_security", "return_pending_l1", "return_pending_ehs", "returned", "rejected"];
-  const statusColors = { pending_l1: "#E2A400", pending_l2: "#E07A1F", approved: "#2F6FED", issued: "#1F497D", return_pending_requester: "#B45309", return_pending_security: "#7C5CE0", return_pending_l1: "#0369A1", return_pending_ehs: "#15803D", returned: "#2E8B57", rejected: "#D64545" };
+  const statusOrder = ["pending_l1", "pending_l2", "approved", "issued", "return_pending_requester", "return_pending_security", "return_pending_l1", "return_pending_ehs", "returned", "rejected", "cancelled"];
+  const statusColors = { pending_l1: "#E2A400", pending_l2: "#E07A1F", approved: "#2F6FED", issued: "#1F497D", return_pending_requester: "#B45309", return_pending_security: "#7C5CE0", return_pending_l1: "#0369A1", return_pending_ehs: "#15803D", returned: "#2E8B57", rejected: "#D64545", cancelled: "#6B7280" };
   const statusCounts = {};
   statusOrder.forEach(s => statusCounts[s] = list.filter(p => p.status === s).length);
   const maxStatus = Math.max(1, Math.max.apply(null, Object.values(statusCounts)));
