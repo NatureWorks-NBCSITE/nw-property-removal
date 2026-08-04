@@ -83,7 +83,6 @@ const REMOVAL_TYPES = [
   { id: "calibration", th: "สอบเทียบ", en: "Calibration", requires_return: true },
   { id: "return_vendor", th: "คืนผู้ให้บริการ", en: "Return to Vendor", requires_return: false },
   { id: "external_testing", th: "ทดสอบภายนอก", en: "External Testing", requires_return: true },
-  { id: "disposal", th: "ส่งกำจัด", en: "Disposal", requires_return: false },
   { id: "sale", th: "ขายออก", en: "Sale", requires_return: false },
   { id: "other", th: "อื่นๆ", en: "Other", requires_return: true }
 ];
@@ -180,7 +179,7 @@ const STATUS_LABEL = {
   rejected: "ปฏิเสธ"
 };
 
-const ALLOWED_EMAIL_DOMAINS = ["natureworkspla.com", "natureworksllc.com", "gmail.com"];
+const ALLOWED_EMAIL_DOMAINS = ["natureworkspla.com", "natureworksllc.com", "natureworksco.com", "gmail.com"];
 
 // ---------- Global state ----------
 let currentUser = null;      // firebase auth user
@@ -190,7 +189,7 @@ let unsubPasses = null;
 let currentTab = "passes";
 let currentSubFilter = "all";
 let itemCounter = 0;
-let newRequestItems = [];    // [{id, name, qty, unit, note, photoUrl, uploading}]
+let newRequestItems = [];    // [{id, name, qty, unit, note, photoUrls: [], uploading}]
 
 // =========================================================
 // AUTH
@@ -259,7 +258,7 @@ async function doSignup() {
   const email = document.getElementById("suEmail").value.trim();
   const pw = document.getElementById("suPassword").value;
   if (!name || !email || !pw) { showAuthMsg("กรอกข้อมูลให้ครบ", "err"); return; }
-  if (!emailDomainOk(email)) { showAuthMsg("กรุณาใช้ Email บริษัท (@natureworkspla.com)", "err"); return; }
+  if (!emailDomainOk(email)) { showAuthMsg("กรุณาใช้ Email บริษัท (@natureworkspla.com หรือ @natureworksco.com)", "err"); return; }
   if (pw.length < 6) { showAuthMsg("Password ต้องมีอย่างน้อย 6 ตัวอักษร", "err"); return; }
   const btn = document.getElementById("btnSignup");
   btn.disabled = true; btn.innerHTML = '<span class="loadingSpin"></span>กำลังสมัคร...';
@@ -649,7 +648,7 @@ function isOverdue(p) {
 }
 
 function renderNewRequestView() {
-  newRequestItems = [{ id: ++itemCounter, name: "", qty: 1, unit: "", note: "", photoUrl: "", uploading: false }];
+  newRequestItems = [{ id: ++itemCounter, name: "", qty: 1, unit: "", note: "", photoUrls: [], uploading: false }];
   const el = document.getElementById("view-newrequest");
   el.innerHTML =
     '<div class="formCard">' +
@@ -725,7 +724,7 @@ function onPurposeChange() {
 }
 
 function addItemRow() {
-  newRequestItems.push({ id: ++itemCounter, name: "", qty: 1, unit: "", note: "", photoUrl: "", uploading: false });
+  newRequestItems.push({ id: ++itemCounter, name: "", qty: 1, unit: "", note: "", photoUrls: [], uploading: false });
   renderItemRows();
 }
 function removeItemRow(id) {
@@ -750,13 +749,16 @@ function renderItemRows() {
         '</div>' +
       '</div>' +
       '<div class="field" style="margin-top:10px;">' +
-        '<label>รูปถ่ายของ *</label>' +
-        '<div class="photoUpload" onclick="document.getElementById(\'file_' + it.id + '\').click()">' +
-          (it.uploading ? '<div class="icon">⏳</div><div class="lbl">กำลังอัปโหลด...</div>' :
-            it.photoUrl ? '<img src="' + it.photoUrl + '">' :
-            '<div class="icon">📷</div><div class="lbl">ถ่ายรูป / Upload photo</div>') +
+        '<label>รูปถ่ายของ * (แนบได้หลายรูป เช่น ก่อนแพ็ค/หลังแพ็ค)</label>' +
+        '<div class="photoThumbGrid">' +
+          it.photoUrls.map((url, pidx) =>
+            '<div class="photoThumb"><img src="' + url + '"><button type="button" class="rm" onclick="removeItemPhoto(' + it.id + ',' + pidx + ')">✕</button></div>'
+          ).join("") +
+          (it.uploading ?
+            '<div class="photoAddTile"><div class="icon">⏳</div><div>อัปโหลด...</div></div>' :
+            '<div class="photoAddTile" onclick="document.getElementById(\'file_' + it.id + '\').click()"><div class="icon">📷</div><div>เพิ่มรูป</div></div>') +
         '</div>' +
-        '<input type="file" id="file_' + it.id + '" accept="image/*" capture="environment" class="hidden" onchange="onItemPhotoSelected(' + it.id + ', this.files[0])">' +
+        '<input type="file" id="file_' + it.id + '" accept="image/*" capture="environment" class="hidden" onchange="onItemPhotoSelected(' + it.id + ', this.files[0]); this.value=\'\';">' +
       '</div>' +
       '<div class="field" style="margin-top:10px;"><label>หมายเหตุรายการ</label><input type="text" value="' + escapeHtml(it.note) + '" oninput="updateItemField(' + it.id + ',\'note\',this.value)" placeholder="หมายเหตุ (ถ้ามี)"></div>' +
     '</div>';
@@ -776,13 +778,20 @@ async function onItemPhotoSelected(id, file) {
   renderItemRows();
   try {
     const url = await uploadToCloudinary(file);
-    it.photoUrl = url;
+    it.photoUrls.push(url);
   } catch (e) {
     showToast("อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง", "err");
   } finally {
     it.uploading = false;
     renderItemRows();
   }
+}
+
+function removeItemPhoto(id, photoIdx) {
+  const it = newRequestItems.find(i => i.id === id);
+  if (!it) return;
+  it.photoUrls.splice(photoIdx, 1);
+  renderItemRows();
 }
 
 async function getNextPassNo() {
@@ -820,7 +829,7 @@ async function submitNewRequest() {
   if (newRequestItems.length === 0) return showToast("กรุณาเพิ่มรายการของอย่างน้อย 1 รายการ", "err");
   for (const it of newRequestItems) {
     if (!it.name.trim()) return showToast("กรุณากรอกชื่อของให้ครบทุกรายการ", "err");
-    if (!it.photoUrl) return showToast("กรุณาแนบรูปถ่ายของให้ครบทุกรายการ", "err");
+    if (!it.photoUrls || it.photoUrls.length === 0) return showToast("กรุณาแนบรูปถ่ายอย่างน้อย 1 รูปให้ครบทุกรายการ", "err");
     if (it.uploading) return showToast("กรุณารอให้อัปโหลดรูปเสร็จก่อน", "err");
   }
 
@@ -847,7 +856,7 @@ async function submitNewRequest() {
       due_date: dueDate || null,
       item_value: itemValue,
       item_value_currency: itemCurrency,
-      items: newRequestItems.map(i => ({ name: i.name, qty: i.qty, unit: i.unit, note: i.note, photo_url: i.photoUrl })),
+      items: newRequestItems.map(i => ({ name: i.name, qty: i.qty, unit: i.unit, note: i.note, photo_urls: i.photoUrls })),
       status: "pending_l1",
       ext_count: 0,
       ext_status: null,
@@ -994,21 +1003,24 @@ function openPassDetail(id) {
   const actionsHtml = blocks.join('<div style="height:16px;border-top:1px solid var(--border);margin-bottom:16px;"></div>');
 
   const itemsHtml = (p.items || []).map(it => {
+    const urls = it.photo_urls || (it.photo_url ? [it.photo_url] : []);
     return '<div class="itemRowView">' +
-      '<img src="' + it.photo_url + '" onclick="openLightbox(\'' + it.photo_url + '\')">' +
       '<div class="info"><div class="n">' + escapeHtml(it.name) + '</div><div class="m">' + (it.qty || "") + ' ' + escapeHtml(it.unit || "") + (it.note ? " · " + escapeHtml(it.note) : "") + '</div></div>' +
+      '<div class="itemPhotoRow">' +
+        urls.map(url => '<img src="' + url + '" onclick="openLightbox(\'' + url + '\')">').join("") +
+      '</div>' +
     '</div>';
   }).join("") || '<div style="color:var(--muted);font-size:13px;">ไม่มีรายการ</div>';
 
   let securityPhotosHtml = "";
   if (p.security_out_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView"><img src="' + p.security_out_photo_url + '" onclick="openLightbox(\'' + p.security_out_photo_url + '\')"><div class="info"><div class="n">รูปตอนออก (Security)</div><div class="m">' + fmtDate(p.security_out_at) + '</div></div></div>';
+    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.security_out_photo_url + '" onclick="openLightbox(\'' + p.security_out_photo_url + '\')"><div class="info"><div class="n">รูปตอนออก (Security)</div><div class="m">' + fmtDate(p.security_out_at) + '</div></div></div>';
   }
   if (p.requester_check_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView"><img src="' + p.requester_check_photo_url + '" onclick="openLightbox(\'' + p.requester_check_photo_url + '\')"><div class="info"><div class="n">รูปตอนผู้ขอตรวจสอบของนำเข้า</div><div class="m">' + fmtDate(p.requester_check_at) + '</div></div></div>';
+    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.requester_check_photo_url + '" onclick="openLightbox(\'' + p.requester_check_photo_url + '\')"><div class="info"><div class="n">รูปตอนผู้ขอตรวจสอบของนำเข้า</div><div class="m">' + fmtDate(p.requester_check_at) + '</div></div></div>';
   }
   if (p.return_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView"><img src="' + p.return_photo_url + '" onclick="openLightbox(\'' + p.return_photo_url + '\')"><div class="info"><div class="n">รูปตอนคืน (รปภ./EHS)</div><div class="m">' + fmtDate(p.return_at) + '</div></div></div>';
+    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.return_photo_url + '" onclick="openLightbox(\'' + p.return_photo_url + '\')"><div class="info"><div class="n">รูปตอนคืน (รปภ./EHS)</div><div class="m">' + fmtDate(p.return_at) + '</div></div></div>';
   }
 
   const modalHtml =
