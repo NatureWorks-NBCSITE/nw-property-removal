@@ -218,17 +218,29 @@ function toggleAuthMode(mode) {
 }
 
 async function doForgotPassword() {
-  const email = document.getElementById("forgotEmail").value.trim();
+  const name = document.getElementById("forgotName").value.trim();
+  const email = document.getElementById("forgotEmail").value.trim().toLowerCase();
+  if (!name) return showAuthMsg("กรุณากรอกชื่อ-นามสกุล", "err");
   if (!email) return showAuthMsg("กรุณากรอก Email", "err");
   const btn = document.getElementById("btnForgot");
-  btn.disabled = true; btn.innerHTML = '<span class="loadingSpin"></span>กำลังส่ง...';
+  btn.disabled = true; btn.innerHTML = '<span class="loadingSpin"></span>กำลังแจ้ง...';
   try {
-    await auth.sendPasswordResetEmail(email);
-    showAuthMsg("ส่ง Email แล้ว! กรุณาเช็คกล่องจดหมาย (รวมถึง Junk/Spam) แล้วกดลิงก์เพื่อตั้งรหัสผ่านใหม่", "ok");
+    EHS_GROUP.forEach(r => {
+      sendNotifyEmail(
+        r.email, r.name,
+        biSubject("มีคนแจ้งลืมรหัสผ่าน - โปรดช่วยรีเซ็ตบัญชี", "Password reset requested — please assist"),
+        biMessage(
+          name + " (" + email + ") แจ้งลืมรหัสผ่านในระบบ Plant Property Removal Request กรุณาเข้า Firebase Console → Authentication → Users → ค้นหา Email นี้ → Delete account จากนั้นแจ้งให้เขาสมัครใช้งานใหม่ด้วย Email เดิม (ประวัติคำขอและสิทธิ์การใช้งานเดิมจะไม่หายไปไหน เพราะผูกกับ Email)",
+          name + " (" + email + ") has reported a forgotten password for the Plant Property Removal Request system. Please go to Firebase Console → Authentication → Users → find this email → Delete account, then ask them to sign up again with the same email (their request history and access rights will remain intact, since everything is tied to email, not the account itself)."
+        ),
+        ""
+      );
+    });
+    showAuthMsg("แจ้งทีม Safety Department แล้ว กรุณารอการติดต่อกลับเพื่อรีเซ็ตบัญชี จากนั้นกลับมาสมัครใช้งานใหม่ด้วย Email เดิม", "ok");
   } catch (e) {
-    showAuthMsg(translateAuthErr(e), "err");
+    showAuthMsg("เกิดข้อผิดพลาด: " + e.message, "err");
   } finally {
-    btn.disabled = false; btn.textContent = "ส่งลิงก์ตั้งรหัสผ่านใหม่";
+    btn.disabled = false; btn.textContent = "แจ้งทีม Safety ให้รีเซ็ตบัญชี";
   }
 }
 
