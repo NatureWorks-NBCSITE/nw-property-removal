@@ -903,6 +903,7 @@ async function submitNewRequest() {
 function openPassDetail(id) {
   const p = allPasses.find(x => x.id === id);
   if (!p) return;
+  if (window._activePassId !== id) resetItemStagePhotos();
   const roles = currentProfile.roles;
   // NOTE: "isTestAdmin" intentionally means the TEST ADMIN role only (full bypass, for testing every path).
   // Plain "admin" (Kulitsara/Naowadee/Monthean) gets full visibility + Dashboard + return-confirm duty
@@ -937,12 +938,8 @@ function openPassDetail(id) {
     // requester-side extension option is also offered if the same account also qualifies).
     if (canSecurityOut) {
       blocks.push(
-        '<div class="field"><label>รูปถ่ายยืนยันการตรวจของก่อนนำออก (รปภ.) *</label>' +
-          '<div class="photoUpload" onclick="document.getElementById(\'secOutFile\').click()" id="secOutPreview">' +
-            '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>' +
-          '</div>' +
-          '<input type="file" id="secOutFile" accept="image/*" capture="environment" class="hidden" onchange="onSecurityPhoto(this.files[0])">' +
-        '</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        itemPhotoCompareHtml(p.items) +
         '<div class="formActions"><button class="btnSuccess" id="btnSecOut" onclick="confirmSecurityOut(\'' + p.id + '\')">✔ ยืนยันตรวจของ & ออกแล้ว</button></div>' +
         '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
           reasonDropdownHtml("secOutReject", SECURITY_OUT_REJECT_REASONS) +
@@ -954,12 +951,8 @@ function openPassDetail(id) {
       blocks.push(
         '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
-        '<div class="field"><label>รูปถ่ายยืนยันการตรวจสอบของนำเข้า *</label>' +
-        '<div class="photoUpload" onclick="document.getElementById(\'selfCheckFile\').click()" id="selfCheckPreview">' +
-          '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>' +
-        '</div>' +
-        '<input type="file" id="selfCheckFile" accept="image/*" capture="environment" class="hidden" onchange="onSelfCheckPhoto(this.files[0])">' +
-      '</div>' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" onclick="submitSelfCheckReturn(\'' + p.id + '\')">✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.</button></div>'
       );
     }
@@ -968,12 +961,8 @@ function openPassDetail(id) {
         '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">🔍 ตรวจสอบของที่นำกลับ</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับ: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
         (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
-        '<div class="field"><label>รูปถ่ายยืนยันการตรวจของตอนคืน (รปภ./Safety) *</label>' +
-        '<div class="photoUpload" onclick="document.getElementById(\'secRetFile\').click()" id="secRetPreview">' +
-          '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>' +
-        '</div>' +
-        '<input type="file" id="secRetFile" accept="image/*" capture="environment" class="hidden" onchange="onReturnPhoto(this.files[0])">' +
-      '</div>' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" id="btnConfirmReturn" onclick="confirmReturn(\'' + p.id + '\')">✔ ยืนยันคืนของแล้ว</button></div>' +
       '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
         reasonDropdownHtml("retReject", RETURN_REJECT_REASONS) +
@@ -1041,16 +1030,25 @@ function openPassDetail(id) {
     '</div>';
   }).join("") || '<div style="color:var(--muted);font-size:13px;">ไม่มีรายการ</div>';
 
-  let securityPhotosHtml = "";
-  if (p.security_out_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.security_out_photo_url + '" onclick="openLightbox(\'' + p.security_out_photo_url + '\')"><div class="info"><div class="n">รูปตอนออก (Security)</div><div class="m">' + fmtDate(p.security_out_at) + '</div></div></div>';
+  function stagePhotoHistoryHtml(label, itemPhotosArr, legacyUrl, atTs) {
+    if (itemPhotosArr && itemPhotosArr.length && itemPhotosArr.some(ip => ip.photo_url)) {
+      return '<div class="detailSection"><h4>' + escapeHtml(label) + ' · ' + fmtDate(atTs) + '</h4>' +
+        itemPhotosArr.map(ip => !ip.photo_url ? "" :
+          '<div class="itemRowView"><div class="info"><div class="n">' + escapeHtml(ip.name) + '</div></div>' +
+          '<div class="itemPhotoRow"><img src="' + ip.photo_url + '" onclick="openLightbox(\'' + ip.photo_url + '\')"></div></div>'
+        ).join("") +
+      '</div>';
+    } else if (legacyUrl) {
+      return '<div class="detailSection"><h4>' + escapeHtml(label) + ' · ' + fmtDate(atTs) + '</h4>' +
+        '<div class="itemRowView singlePhotoRow"><img src="' + legacyUrl + '" onclick="openLightbox(\'' + legacyUrl + '\')"><div class="info"><div class="n">รูปยืนยัน</div></div></div>' +
+      '</div>';
+    }
+    return "";
   }
-  if (p.requester_check_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.requester_check_photo_url + '" onclick="openLightbox(\'' + p.requester_check_photo_url + '\')"><div class="info"><div class="n">รูปตอนผู้ขอตรวจสอบของนำเข้า</div><div class="m">' + fmtDate(p.requester_check_at) + '</div></div></div>';
-  }
-  if (p.return_photo_url) {
-    securityPhotosHtml += '<div class="itemRowView singlePhotoRow"><img src="' + p.return_photo_url + '" onclick="openLightbox(\'' + p.return_photo_url + '\')"><div class="info"><div class="n">รูปตอนคืน (รปภ./Safety)</div><div class="m">' + fmtDate(p.return_at) + '</div></div></div>';
-  }
+  const securityPhotosHtml =
+    stagePhotoHistoryHtml("รูปตอนออก (Security) — ทีละรายการ", p.security_out_item_photos, p.security_out_photo_url, p.security_out_at) +
+    stagePhotoHistoryHtml("รูปตอนผู้ขอตรวจสอบของนำเข้า — ทีละรายการ", p.requester_check_item_photos, p.requester_check_photo_url, p.requester_check_at) +
+    stagePhotoHistoryHtml("รูปตอนคืน (รปภ./Safety) — ทีละรายการ", p.return_item_photos, p.return_photo_url, p.return_at);
 
   const modalHtml =
   '<div class="modalOverlay" onclick="if(event.target.classList.contains(\'modalOverlay\'))closeModal()">' +
@@ -1098,7 +1096,7 @@ function openPassDetail(id) {
         itemsHtml +
       '</div>' +
 
-      (securityPhotosHtml ? '<div class="detailSection"><h4>ภาพยืนยันความปลอดภัย</h4>' + securityPhotosHtml + '</div>' : "") +
+      securityPhotosHtml +
 
       (actionsHtml ? '<div class="detailSection">' + actionsHtml + '</div>' : "") +
     '</div>' +
@@ -1280,7 +1278,7 @@ async function rejectExtension(id, stage) {
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
-function closeModal() { document.getElementById("modalRoot").innerHTML = ""; window._activePassId = null; }
+function closeModal() { document.getElementById("modalRoot").innerHTML = ""; window._activePassId = null; resetItemStagePhotos(); }
 
 async function approvePass(id, stage) {
   const p = allPasses.find(x => x.id === id);
@@ -1361,33 +1359,85 @@ async function rejectPass(id, stage) {
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
-let _secOutPhotoUrl = "", _returnPhotoUrl = "", _selfCheckPhotoUrl = "";
+// Per-item "confirmation photo" state used by Security Check-out, Requester self-check,
+// and Security/EHS return check — lets each item be photographed 1:1 against its outgoing photo(s).
+let _itemStagePhotos = {};           // { itemIndex: url }
+let _itemStagePhotoUploading = {};   // { itemIndex: bool }
 
-async function onSecurityPhoto(file) {
+function resetItemStagePhotos() {
+  _itemStagePhotos = {};
+  _itemStagePhotoUploading = {};
+}
+
+function refreshActivePassModal() {
+  if (window._activePassId) openPassDetail(window._activePassId);
+}
+
+function allItemStagePhotosReady(itemCount) {
+  for (let i = 0; i < itemCount; i++) { if (!_itemStagePhotos[i]) return false; }
+  return itemCount > 0;
+}
+
+function buildItemStagePhotosArray(items) {
+  return items.map((it, idx) => ({ name: it.name, photo_url: _itemStagePhotos[idx] || "" }));
+}
+
+async function onItemStagePhotoSelected(idx, file) {
   if (!file) return;
-  document.getElementById("secOutPreview").innerHTML = '<div class="icon">⏳</div><div class="lbl">กำลังอัปโหลด...</div>';
+  _itemStagePhotoUploading[idx] = true;
+  refreshActivePassModal();
   try {
-    _secOutPhotoUrl = await uploadToCloudinary(file);
-    document.getElementById("secOutPreview").innerHTML = '<img src="' + _secOutPhotoUrl + '">';
+    _itemStagePhotos[idx] = await uploadToCloudinary(file);
   } catch (e) {
     showToast("อัปโหลดรูปไม่สำเร็จ", "err");
-    document.getElementById("secOutPreview").innerHTML = '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>';
+  } finally {
+    _itemStagePhotoUploading[idx] = false;
+    refreshActivePassModal();
   }
 }
 
+function clearItemStagePhoto(idx) {
+  delete _itemStagePhotos[idx];
+  refreshActivePassModal();
+}
+
+function itemPhotoCompareHtml(items) {
+  return (items || []).map((it, idx) => {
+    const refUrls = it.photo_urls || (it.photo_url ? [it.photo_url] : []);
+    const url = _itemStagePhotos[idx];
+    const uploading = _itemStagePhotoUploading[idx];
+    return '<div class="compareRow">' +
+      '<div class="compareName">' + escapeHtml(it.name) + (it.qty ? ' <span class="compareQty">(' + it.qty + ' ' + escapeHtml(it.unit || "") + ')</span>' : '') + '</div>' +
+      '<div class="compareCols">' +
+        '<div class="compareCol"><div class="compareLabel">ตอนนำออก</div><div class="compareThumbs">' +
+          (refUrls.length ? refUrls.map(u => '<img src="' + u + '" onclick="openLightbox(\'' + u + '\')">').join("") : '<span class="compareNone">ไม่มีรูป</span>') +
+        '</div></div>' +
+        '<div class="compareCol"><div class="compareLabel">ยืนยันตอนนี้ *</div>' +
+          (uploading ? '<div class="photoAddTile"><div class="icon">⏳</div></div>' :
+           url ? '<div class="photoThumb"><img src="' + url + '" onclick="openLightbox(\'' + url + '\')"><button type="button" class="rm" onclick="clearItemStagePhoto(' + idx + ')">✕</button></div>' :
+           '<div class="photoAddTile" onclick="document.getElementById(\'stagePhoto_' + idx + '\').click()"><div class="icon">📷</div></div>') +
+          '<input type="file" id="stagePhoto_' + idx + '" accept="image/*" capture="environment" class="hidden" onchange="onItemStagePhotoSelected(' + idx + ', this.files[0])">' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
 async function confirmSecurityOut(id) {
-  if (!_secOutPhotoUrl) return showToast("กรุณาถ่ายรูปยืนยันก่อน", "err");
   const p = allPasses.find(x => x.id === id);
+  if (!p) return;
+  if (!allItemStagePhotosReady((p.items || []).length)) return showToast("กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ", "err");
+  const itemPhotos = buildItemStagePhotosArray(p.items || []);
   try {
     await db.collection("passes").doc(id).update({
       status: "issued",
-      security_out_photo_url: _secOutPhotoUrl,
+      security_out_item_photos: itemPhotos,
       security_out_by: currentProfile.email,
       security_out_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast("ยืนยันตรวจของและออกแล้ว", "ok");
-    _secOutPhotoUrl = "";
+    resetItemStagePhotos();
     closeModal();
     if (p) {
       sendNotifyEmail(
@@ -1463,31 +1513,21 @@ async function submitReturnNotice(id) {
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
-async function onSelfCheckPhoto(file) {
-  if (!file) return;
-  document.getElementById("selfCheckPreview").innerHTML = '<div class="icon">⏳</div><div class="lbl">กำลังอัปโหลด...</div>';
-  try {
-    _selfCheckPhotoUrl = await uploadToCloudinary(file);
-    document.getElementById("selfCheckPreview").innerHTML = '<img src="' + _selfCheckPhotoUrl + '">';
-  } catch (e) {
-    showToast("อัปโหลดรูปไม่สำเร็จ", "err");
-    document.getElementById("selfCheckPreview").innerHTML = '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>';
-  }
-}
-
 async function submitSelfCheckReturn(id) {
-  if (!_selfCheckPhotoUrl) return showToast("กรุณาถ่ายรูปยืนยันก่อน", "err");
   const p = allPasses.find(x => x.id === id);
+  if (!p) return;
+  if (!allItemStagePhotosReady((p.items || []).length)) return showToast("กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ", "err");
+  const itemPhotos = buildItemStagePhotosArray(p.items || []);
   try {
     await db.collection("passes").doc(id).update({
       status: "return_pending_security",
-      requester_check_photo_url: _selfCheckPhotoUrl,
+      requester_check_item_photos: itemPhotos,
       requester_check_by: currentProfile.email,
       requester_check_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast("ยืนยันตรวจสอบของนำเข้าแล้ว ส่งต่อให้ รปภ./Safety ตรวจสอบ", "ok");
-    _selfCheckPhotoUrl = "";
+    resetItemStagePhotos();
     closeModal();
     if (p) {
       RETURN_NOTICE_RECIPIENTS.forEach(r => {
@@ -1505,31 +1545,21 @@ async function submitSelfCheckReturn(id) {
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
-async function onReturnPhoto(file) {
-  if (!file) return;
-  document.getElementById("secRetPreview").innerHTML = '<div class="icon">⏳</div><div class="lbl">กำลังอัปโหลด...</div>';
-  try {
-    _returnPhotoUrl = await uploadToCloudinary(file);
-    document.getElementById("secRetPreview").innerHTML = '<img src="' + _returnPhotoUrl + '">';
-  } catch (e) {
-    showToast("อัปโหลดรูปไม่สำเร็จ", "err");
-    document.getElementById("secRetPreview").innerHTML = '<div class="icon">📷</div><div class="lbl">ถ่ายรูปยืนยัน</div>';
-  }
-}
-
 async function confirmReturn(id) {
-  if (!_returnPhotoUrl) return showToast("กรุณาถ่ายรูปยืนยันก่อน", "err");
   const p = allPasses.find(x => x.id === id);
+  if (!p) return;
+  if (!allItemStagePhotosReady((p.items || []).length)) return showToast("กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ", "err");
+  const itemPhotos = buildItemStagePhotosArray(p.items || []);
   try {
     await db.collection("passes").doc(id).update({
       status: "return_pending_l1",
-      return_photo_url: _returnPhotoUrl,
+      return_item_photos: itemPhotos,
       return_by: currentProfile.email,
       return_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast("ยืนยันตรวจของแล้ว ส่งต่อให้ผจก.แผนกรับทราบและปิดคำขอ", "ok");
-    _returnPhotoUrl = "";
+    resetItemStagePhotos();
     closeModal();
     if (p) {
       sendNotifyEmail(
