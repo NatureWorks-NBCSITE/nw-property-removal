@@ -94,10 +94,10 @@ const REMOVAL_TYPES = [
 const UNITS = ["ชิ้น", "กล่อง", "ม้วน", "เครื่อง", "ใบ", "ชุด", "อัน", "กก."];
 
 const L2_APPROVERS_DEFAULT = [
-  { email: "mike_bassett@natureworksllc.com", name: "Mike Bassett" },
-  { email: "sirisak_charoenkitpeeti@natureworkspla.com", name: "Sirisak Charoenkitpeeti" },
-  { email: "sippakorn_rattanaphun@natureworkspla.com", name: "Sippakorn Rattanaphun" },
-  { email: "bill_suehr@natureworksllc.com", name: "Bill Suehr" }
+  { email: "bill_suehr@natureworksllc.com", name: "Bill Suehr", order: 1 },
+  { email: "mike_bassett@natureworksllc.com", name: "Mike Bassett", order: 2 },
+  { email: "sirisak_charoenkitpeeti@natureworkspla.com", name: "Sirisak Charoenkitpeeti", order: 3 },
+  { email: "sippakorn_rattanaphun@natureworkspla.com", name: "Sippakorn Rattanaphun", order: 4 }
 ];
 // Live, possibly Firestore-overridden copy — this is what the rest of the app reads from.
 let L2_APPROVERS = L2_APPROVERS_DEFAULT.map(a => ({ ...a }));
@@ -149,7 +149,12 @@ async function loadDynamicConfig() {
   try {
     const l2Snap = await db.collection("l2Approvers").get();
     if (!l2Snap.empty) {
-      L2_APPROVERS = l2Snap.docs.map(doc => ({ email: (doc.data().email || doc.id).toLowerCase(), name: doc.data().name || doc.id }));
+      L2_APPROVERS = l2Snap.docs.map(doc => ({
+        email: (doc.data().email || doc.id).toLowerCase(),
+        name: doc.data().name || doc.id,
+        order: (typeof doc.data().order === "number") ? doc.data().order : 999
+      }));
+      L2_APPROVERS.sort((a, b) => a.order - b.order);
     }
   } catch (e) { console.error("Failed to load l2Approvers config:", e); }
 }
@@ -718,7 +723,7 @@ function renderNewRequestView() {
     '</div>' +
 
     '<div class="formCard">' +
-      '<h3>รายการของ / Items <span style="font-weight:400;color:var(--muted);font-size:12px;">— ต้องแนบรูปถ่ายของทุกรายการ *</span></h3>' +
+      '<h3>รายการของ / Items <span style="font-weight:400;color:var(--muted);font-size:13px;">— ต้องแนบรูปถ่ายของทุกรายการ *</span></h3>' +
       '<div id="itemsContainer"></div>' +
       '<button class="addItemBtn" onclick="addItemRow()">+ เพิ่มรายการ</button>' +
     '</div>' +
@@ -938,7 +943,7 @@ function openPassDetail(id) {
     // requester-side extension option is also offered if the same account also qualifies).
     if (canSecurityOut) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
         '<div class="formActions"><button class="btnSuccess" id="btnSecOut" onclick="confirmSecurityOut(\'' + p.id + '\')">✔ ยืนยันตรวจของ & ออกแล้ว</button></div>' +
         '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
@@ -949,19 +954,19 @@ function openPassDetail(id) {
     }
     if (canSelfCheckReturn) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
-        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
-        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
+        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" onclick="submitSelfCheckReturn(\'' + p.id + '\')">✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.</button></div>'
       );
     }
     if (canConfirmReturn) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">🔍 ตรวจสอบของที่นำกลับ</div>' +
-        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับ: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
-        (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
-        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">🔍 ตรวจสอบของที่นำกลับ</div>' +
+        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับ: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
+        (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:13px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
+        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" id="btnConfirmReturn" onclick="confirmReturn(\'' + p.id + '\')">✔ ยืนยันคืนของแล้ว</button></div>' +
       '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
@@ -972,8 +977,8 @@ function openPassDetail(id) {
     }
     if (canApproveReturnL1) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
-        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
+        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้ตรวจใหม่)</label><input type="text" id="rejReturnL1Reason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
           '<button class="btnSuccess" onclick="approveReturnL1(\'' + p.id + '\')">✔ รับทราบ & ส่งต่อ Safety Department Head</button>' +
@@ -983,8 +988,8 @@ function openPassDetail(id) {
     }
     if (canApproveReturnEhs) {
       blocks.push(
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (Safety Department Head) — ขั้นตอนสุดท้าย</div>' +
-        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (Safety Department Head) — ขั้นตอนสุดท้าย</div>' +
+        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้พิจารณาใหม่)</label><input type="text" id="rejReturnEhsReason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
           '<button class="btnSuccess" onclick="approveReturnEhs(\'' + p.id + '\')">✔ อนุมัติปิดคำขอ</button>' +
@@ -1004,7 +1009,7 @@ function openPassDetail(id) {
     if (canRequestExtension) {
       blocks.push(
         '<div>' +
-          '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">นำของกลับตามกำหนดไม่ได้? ขอขยายเวลาได้ (ใช้แล้ว ' + (p.ext_count || 0) + '/3 ครั้ง)</div>' +
+          '<div style="font-size:13.5px;color:var(--muted);margin-bottom:8px;">นำของกลับตามกำหนดไม่ได้? ขอขยายเวลาได้ (ใช้แล้ว ' + (p.ext_count || 0) + '/3 ครั้ง)</div>' +
           '<div class="field"><label>วันที่กำหนดคืนใหม่ที่ต้องการ *</label><input type="date" id="extNewDate"></div>' +
           '<div class="field"><label>เหตุผล *</label><input type="text" id="extReason" placeholder="เหตุผลที่ขอขยายเวลา"></div>' +
           '<div class="formActions"><button class="btnGhost" onclick="submitExtensionRequest(\'' + p.id + '\')">⏳ ขอขยายเวลานำกลับ</button></div>' +
@@ -1014,7 +1019,7 @@ function openPassDetail(id) {
   }
   if (canCancelRequest) {
     blocks.push(
-      '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)</div>' +
+      '<div style="font-size:13.5px;color:var(--muted);margin-bottom:8px;">เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)</div>' +
       '<div class="formActions"><button class="btnDanger" onclick="cancelRequest(\'' + p.id + '\')">🗑️ ยกเลิกคำขอ</button></div>'
     );
   }
@@ -1028,7 +1033,7 @@ function openPassDetail(id) {
         urls.map(url => '<img src="' + url + '" onclick="openLightbox(\'' + url + '\')">').join("") +
       '</div>' +
     '</div>';
-  }).join("") || '<div style="color:var(--muted);font-size:13px;">ไม่มีรายการ</div>';
+  }).join("") || '<div style="color:var(--muted);font-size:14px;">ไม่มีรายการ</div>';
 
   function stagePhotoHistoryHtml(label, itemPhotosArr, legacyUrl, atTs) {
     if (itemPhotosArr && itemPhotosArr.length && itemPhotosArr.some(ip => ip.photo_url)) {
@@ -1068,8 +1073,8 @@ function openPassDetail(id) {
         '<div class="kv"><span class="k">เบอร์โทร</span><span>' + escapeHtml(p.requester_phone || "-") + '</span></div>' +
         '<div class="kv"><span class="k">วัตถุประสงค์</span><span>' + escapeHtml(p.purpose_th) + ' / ' + escapeHtml(p.purpose_en) + '</span></div>' +
         '<div style="background:' + (p.requires_return ? "#FFF6E5" : "#E9F7EF") + ';border:1px solid ' + (p.requires_return ? "#F5DBA0" : "#B7EBC6") + ';border-radius:8px;padding:10px 12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">' +
-          '<span style="font-weight:700;font-size:13px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
-          (p.requires_return ? '<span style="font-size:12.5px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
+          '<span style="font-weight:700;font-size:14px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
+          (p.requires_return ? '<span style="font-size:13.5px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
         '</div>' +
         '<div class="kv"><span class="k">ปลายทาง</span><span>' + escapeHtml(p.destination || "-") + '</span></div>' +
         '<div class="kv"><span class="k">ทะเบียนรถ</span><span>' + escapeHtml(p.vehicle_plate || "-") + '</span></div>' +
@@ -1115,7 +1120,7 @@ function actionButtons(passId, stage) {
 
 function extensionApprovalPanel(p, stage) {
   return '<div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:12px;">' +
-    '<div style="font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:8px;">คำขอขยายเวลานำกลับ ครั้งที่ ' + ((p.ext_count || 0) + 1) + ' — ' + (stage === "l1" ? "รออนุมัติขั้น 1" : "รออนุมัติขั้น 2") + '</div>' +
+    '<div style="font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:8px;">คำขอขยายเวลานำกลับ ครั้งที่ ' + ((p.ext_count || 0) + 1) + ' — ' + (stage === "l1" ? "รออนุมัติขั้น 1" : "รออนุมัติขั้น 2") + '</div>' +
     '<div class="kv"><span class="k">วันที่กำหนดเดิม</span><span>' + escapeHtml(p.due_date || "-") + '</span></div>' +
     '<div class="kv"><span class="k">วันที่ขอเปลี่ยนเป็น</span><span>' + escapeHtml(p.ext_requested_due_date || "-") + '</span></div>' +
     '<div class="kv"><span class="k">เหตุผล</span><span>' + escapeHtml(p.ext_reason || "-") + '</span></div>' +
@@ -1837,35 +1842,36 @@ function renderAdminView() {
   el.innerHTML =
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ผู้อนุมัติขั้น 1 ตามแผนก</h3>' +
-      '<p style="font-size:12.5px;color:var(--muted);margin-top:-6px;">แก้ไขชื่อ/Email แล้วกด Save ต่อแถว — มีผลทันทีตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น ไม่ต้องแก้ Code</p>' +
+      '<p style="font-size:13.5px;color:var(--muted);margin-top:-6px;">แก้ไขชื่อ/Email แล้วกด Save ต่อแถว — มีผลทันทีตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น ไม่ต้องแก้ Code</p>' +
       DEPARTMENTS.map(d => deptApproverRowHtml(d)).join("") +
     '</div>' +
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ผู้อนุมัติขั้น 2</h3>' +
-      '<p style="font-size:12.5px;color:var(--muted);margin-top:-6px;">รายชื่อที่ผู้ขอเลือกได้ตอนสร้างคำขอ — เพิ่ม/แก้ไข/ลบได้อิสระ</p>' +
-      '<div id="l2ApproverList">' + L2_APPROVERS.map(a => l2ApproverRowHtml(a.email, a.name, a.email, false)).join("") + '</div>' +
+      '<p style="font-size:13.5px;color:var(--muted);margin-top:-6px;">รายชื่อที่ผู้ขอเลือกได้ตอนสร้างคำขอ — เพิ่ม/แก้ไข/ลบได้อิสระ</p>' +
+      '<div id="l2ApproverList">' + L2_APPROVERS.map(a => l2ApproverRowHtml(a.email, a.name, a.email, false, a.order)).join("") + '</div>' +
       '<div id="l2ApproverDrafts">' + l2ApproverDraftRows.map(r => l2ApproverRowHtml(r.tempId, r.name, r.email, true)).join("") + '</div>' +
       '<button class="addItemBtn" onclick="addL2ApproverRow()">+ เพิ่มผู้อนุมัติขั้น 2</button>' +
     '</div>' +
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ข้อมูลอ้างอิงอื่นๆ (Read-only)</h3>' +
-      '<p style="font-size:12.5px;color:var(--muted);">ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js</p>' +
+      '<p style="font-size:13.5px;color:var(--muted);">ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js</p>' +
     '</div>';
 }
 
 function deptApproverRowHtml(d) {
   const rowId = "dept_" + d.id;
   return '<div style="display:grid;grid-template-columns:1.2fr 1.3fr 1.6fr auto;gap:8px;align-items:end;padding:10px 0;border-bottom:1px solid var(--border);">' +
-    '<div style="font-size:13px;font-weight:600;color:var(--navy);padding-bottom:9px;">' + escapeHtml(d.name_th) + '</div>' +
+    '<div style="font-size:14px;font-weight:600;color:var(--navy);padding-bottom:9px;">' + escapeHtml(d.name_th) + '</div>' +
     '<div class="field" style="margin:0;"><label>ชื่อผู้อนุมัติ</label><input type="text" id="' + rowId + '_name" value="' + escapeHtml(d.l1_name) + '"></div>' +
     '<div class="field" style="margin:0;"><label>Email</label><input type="email" id="' + rowId + '_email" value="' + escapeHtml(d.l1_email) + '"></div>' +
     '<button class="btnGhost" style="padding:9px 14px;" onclick="saveDeptApprover(\'' + d.id + '\')">Save</button>' +
   '</div>';
 }
 
-function l2ApproverRowHtml(rowKey, name, email, isDraft) {
+function l2ApproverRowHtml(rowKey, name, email, isDraft, order) {
   const rowId = "l2_" + rowKey.replace(/[^a-zA-Z0-9]/g, "_");
-  return '<div style="display:grid;grid-template-columns:1.3fr 1.6fr auto auto;gap:8px;align-items:end;padding:10px 0;border-bottom:1px solid var(--border);">' +
+  return '<div style="display:grid;grid-template-columns:0.6fr 1.3fr 1.6fr auto auto;gap:8px;align-items:end;padding:10px 0;border-bottom:1px solid var(--border);">' +
+    '<div class="field" style="margin:0;"><label>ลำดับ</label><input type="number" min="1" step="1" id="' + rowId + '_order" value="' + (order != null && order < 999 ? order : "") + '" placeholder="-"></div>' +
     '<div class="field" style="margin:0;"><label>ชื่อ</label><input type="text" id="' + rowId + '_name" value="' + escapeHtml(name || "") + '"></div>' +
     '<div class="field" style="margin:0;"><label>Email</label><input type="email" id="' + rowId + '_email" value="' + escapeHtml(email || "") + '" ' + (isDraft ? "" : "") + '></div>' +
     '<button class="btnGhost" style="padding:9px 14px;" onclick="saveL2Approver(\'' + rowKey + '\', ' + (isDraft ? "true" : "false") + ')">Save</button>' +
@@ -1902,10 +1908,14 @@ async function saveL2Approver(rowKey, isDraft) {
   const rowId = "l2_" + rowKey.replace(/[^a-zA-Z0-9]/g, "_");
   const nameEl = document.getElementById(rowId + "_name");
   const emailEl = document.getElementById(rowId + "_email");
+  const orderEl = document.getElementById(rowId + "_order");
   const name = nameEl.value.trim();
   const email = emailEl.value.trim().toLowerCase();
+  const orderRaw = orderEl.value.trim();
+  const order = orderRaw === "" ? 999 : Number(orderRaw);
   if (!name || !email) return showToast("กรุณากรอกชื่อและ Email ให้ครบ", "err");
   if (!email.includes("@")) return showToast("รูปแบบ Email ไม่ถูกต้อง", "err");
+  if (isNaN(order)) return showToast("ลำดับต้องเป็นตัวเลข", "err");
   const docId = email.replace(/[^a-zA-Z0-9]/g, "_");
   try {
     // if this save changes the email of an EXISTING (non-draft) row, remove the old doc first
@@ -1914,9 +1924,10 @@ async function saveL2Approver(rowKey, isDraft) {
       await db.collection("l2Approvers").doc(oldDocId).delete();
       L2_APPROVERS = L2_APPROVERS.filter(a => a.email !== rowKey);
     }
-    await db.collection("l2Approvers").doc(docId).set({ name, email });
+    await db.collection("l2Approvers").doc(docId).set({ name, email, order });
     const existing = L2_APPROVERS.find(a => a.email === email);
-    if (existing) { existing.name = name; } else { L2_APPROVERS.push({ name, email }); }
+    if (existing) { existing.name = name; existing.order = order; } else { L2_APPROVERS.push({ name, email, order }); }
+    L2_APPROVERS.sort((a, b) => (a.order || 999) - (b.order || 999));
     if (isDraft) l2ApproverDraftRows = l2ApproverDraftRows.filter(r => r.tempId !== rowKey);
     showToast("บันทึกผู้อนุมัติขั้น 2 แล้ว", "ok");
     renderAdminView();
