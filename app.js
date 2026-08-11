@@ -88,7 +88,8 @@ const REMOVAL_TYPES = [
   { id: "return_vendor", th: "คืนผู้ให้บริการ", en: "Return to Vendor", requires_return: false },
   { id: "external_testing", th: "ทดสอบภายนอก", en: "External Testing", requires_return: true },
   { id: "sale", th: "ขายออก", en: "Sale", requires_return: false },
-  { id: "other", th: "อื่นๆ", en: "Other", requires_return: true }
+  { id: "infectious_waste", th: "ส่งกำจัดขยะติดเชื้อจากห้องพยาบาล", en: "Infectious Waste Disposal (Medical Room)", requires_return: false, skip_value: true, skip_l2: true },
+  { id: "other", th: "อื่นๆ", en: "Other", requires_return: false, needs_detail: true }
 ];
 
 const UNITS = ["ชิ้น", "กล่อง", "ม้วน", "เครื่อง", "ใบ", "ชุด", "อัน", "กก."];
@@ -702,18 +703,22 @@ function renderNewRequestView() {
         '<div class="field"><label>ผู้อนุมัติขั้น 1 (อัตโนมัติตามแผนก)</label>' +
           '<div class="readonlyBox" id="reqL1Box">— เลือกแผนกก่อน —</div>' +
         '</div>' +
-        '<div class="field"><label>ผู้อนุมัติขั้น 2 *</label>' +
+        '<div class="field" id="l2Wrap"><label>ผู้อนุมัติขั้น 2 *</label>' +
           '<select id="reqL2">' +
             '<option value="">เลือกผู้อนุมัติขั้น 2</option>' +
             L2_APPROVERS.map(a => '<option value="' + a.email + '">' + a.name + '</option>').join("") +
           '</select>' +
         '</div>' +
       '</div>' +
+      '<div class="field" id="purposeDetailWrap" style="margin-top:14px;display:none;">' +
+        '<label>ระบุรายละเอียดวัตถุประสงค์ *</label>' +
+        '<input type="text" id="reqPurposeDetail" placeholder="ระบุรายละเอียด...">' +
+      '</div>' +
       '<div class="field" id="dueDateWrap" style="margin-top:14px;display:none;">' +
         '<label>กำหนดวันนำกลับ (Due date)</label>' +
         '<input type="date" id="reqDueDate">' +
       '</div>' +
-      '<div class="grid2" style="margin-top:14px;">' +
+      '<div class="grid2" id="valueWrap" style="margin-top:14px;">' +
         '<div class="field"><label>มูลค่าสินค้า (โดยประมาณ) *</label><input type="number" min="0" step="0.01" id="reqItemValue" placeholder="0.00"></div>' +
         '<div class="field"><label>สกุลเงิน</label><select id="reqCurrency">' +
           CURRENCIES.map(c => '<option value="' + c + '"' + (c === "THB" ? " selected" : "") + '>' + c + '</option>').join("") +
@@ -744,6 +749,9 @@ function onDeptChange() {
 function onPurposeChange() {
   const rt = removalTypeById(document.getElementById("reqPurpose").value);
   document.getElementById("dueDateWrap").style.display = (rt && rt.requires_return) ? "" : "none";
+  document.getElementById("purposeDetailWrap").style.display = (rt && rt.needs_detail) ? "" : "none";
+  document.getElementById("valueWrap").style.display = (rt && rt.skip_value) ? "none" : "";
+  document.getElementById("l2Wrap").style.display = (rt && rt.skip_l2) ? "none" : "";
 }
 
 function addItemRow() {
@@ -834,11 +842,13 @@ async function submitNewRequest() {
   const name = document.getElementById("reqName").value.trim();
   const phone = document.getElementById("reqPhone").value.trim();
   const purpose = document.getElementById("reqPurpose").value;
+  const purposeDetail = document.getElementById("reqPurposeDetail").value.trim();
   const destination = document.getElementById("reqDestination").value.trim();
   const vehicle = document.getElementById("reqVehicle").value.trim();
   const l2email = document.getElementById("reqL2").value;
   const note = document.getElementById("reqNote").value.trim();
   const dueDate = document.getElementById("reqDueDate") ? document.getElementById("reqDueDate").value : "";
+  const rt = removalTypeById(purpose);
   const itemValueRaw = document.getElementById("reqItemValue").value;
   const itemValue = itemValueRaw === "" ? null : Number(itemValueRaw);
   const itemCurrency = document.getElementById("reqCurrency").value;
@@ -846,9 +856,13 @@ async function submitNewRequest() {
   if (!dept) return showToast("กรุณาเลือกแผนก", "err");
   if (!name) return showToast("กรุณากรอกชื่อผู้ขอ", "err");
   if (!purpose) return showToast("กรุณาเลือกวัตถุประสงค์", "err");
-  if (!l2email) return showToast("กรุณาเลือกผู้อนุมัติขั้น 2", "err");
-  if (itemValueRaw === "") return showToast("กรุณากรอกมูลค่าสินค้า", "err");
-  if (isNaN(itemValue) || itemValue < 0) return showToast("กรุณากรอกมูลค่าสินค้าเป็นตัวเลขที่ถูกต้อง", "err");
+  if (rt && rt.needs_detail && !purposeDetail) return showToast("กรุณาระบุรายละเอียดวัตถุประสงค์", "err");
+  const skipL2 = !!(rt && rt.skip_l2);
+  if (!skipL2 && !l2email) return showToast("กรุณาเลือกผู้อนุมัติขั้น 2", "err");
+  if (!rt || !rt.skip_value) {
+    if (itemValueRaw === "") return showToast("กรุณากรอกมูลค่าสินค้า", "err");
+    if (isNaN(itemValue) || itemValue < 0) return showToast("กรุณากรอกมูลค่าสินค้าเป็นตัวเลขที่ถูกต้อง", "err");
+  }
   if (newRequestItems.length === 0) return showToast("กรุณาเพิ่มรายการของอย่างน้อย 1 รายการ", "err");
   for (const it of newRequestItems) {
     if (!it.name.trim()) return showToast("กรุณากรอกชื่อของให้ครบทุกรายการ", "err");
@@ -856,9 +870,9 @@ async function submitNewRequest() {
     if (it.uploading) return showToast("กรุณารอให้อัปโหลดรูปเสร็จก่อน", "err");
   }
 
-  const rt = removalTypeById(purpose);
   const deptObj = DEPARTMENTS.find(d => d.id === dept);
-  const l2 = L2_APPROVERS.find(a => a.email === l2email);
+  const l2 = skipL2 ? null : L2_APPROVERS.find(a => a.email === l2email);
+  const skipValue = !!(rt && rt.skip_value);
 
   const btn = document.getElementById("btnSubmitRequest");
   btn.disabled = true; btn.innerHTML = '<span class="loadingSpin"></span>กำลังส่งคำขอ...';
@@ -872,13 +886,15 @@ async function submitNewRequest() {
       requester_phone: phone,
       requester_email: currentProfile.email,
       purpose_th: rt.th, purpose_en: rt.en, removal_type: rt.id, requires_return: rt.requires_return,
+      purpose_detail: purposeDetail || null,
       destination: destination, vehicle_plate: vehicle,
       approver_l1_email: deptObj.l1_email, approver_l1_name: deptObj.l1_name,
-      approver_l2_email: l2.email, approver_l2_name: l2.name,
+      approver_l2_email: skipL2 ? null : l2.email, approver_l2_name: skipL2 ? null : l2.name,
+      skip_l2_approval: skipL2,
       note: note,
-      due_date: dueDate || null,
-      item_value: itemValue,
-      item_value_currency: itemCurrency,
+      due_date: (rt.requires_return && dueDate) ? dueDate : null,
+      item_value: skipValue ? null : itemValue,
+      item_value_currency: skipValue ? null : itemCurrency,
       items: newRequestItems.map(i => ({ name: i.name, qty: i.qty, unit: i.unit, note: i.note, photo_urls: i.photoUrls })),
       status: "pending_l1",
       ext_count: 0,
@@ -929,6 +945,9 @@ function openPassDetail(id) {
     p.status === "issued" && !p.ext_status && (p.ext_count || 0) < 3;
   const canCancelRequest = (p.requester_email === currentProfile.email || isTestAdmin) &&
     ["pending_l1", "pending_l2", "approved"].includes(p.status) && !p.ext_status;
+  const canEditVehicle = isTestAdmin || currentProfile.email === p.requester_email ||
+    currentProfile.email === p.approver_l1_email || currentProfile.email === p.approver_l2_email ||
+    roles.includes("security") || roles.includes("return_confirmer");
 
   const blocks = [];
   if (canApproveExtL1 || canApproveExtL2) {
@@ -1072,12 +1091,19 @@ function openPassDetail(id) {
         '<div class="kv"><span class="k">แผนก</span><span>' + escapeHtml(deptNameById(p.requester_dept)) + '</span></div>' +
         '<div class="kv"><span class="k">เบอร์โทร</span><span>' + escapeHtml(p.requester_phone || "-") + '</span></div>' +
         '<div class="kv"><span class="k">วัตถุประสงค์</span><span>' + escapeHtml(p.purpose_th) + ' / ' + escapeHtml(p.purpose_en) + '</span></div>' +
+        (p.purpose_detail ? '<div class="kv"><span class="k">รายละเอียดเพิ่มเติม</span><span>' + escapeHtml(p.purpose_detail) + '</span></div>' : "") +
         '<div style="background:' + (p.requires_return ? "#FFF6E5" : "#E9F7EF") + ';border:1px solid ' + (p.requires_return ? "#F5DBA0" : "#B7EBC6") + ';border-radius:8px;padding:10px 12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">' +
           '<span style="font-weight:700;font-size:14px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
           (p.requires_return ? '<span style="font-size:13.5px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
         '</div>' +
         '<div class="kv"><span class="k">ปลายทาง</span><span>' + escapeHtml(p.destination || "-") + '</span></div>' +
-        '<div class="kv"><span class="k">ทะเบียนรถ</span><span>' + escapeHtml(p.vehicle_plate || "-") + '</span></div>' +
+        (canEditVehicle ?
+          '<div class="kv" style="align-items:center;"><span class="k">ทะเบียนรถ</span>' +
+            '<span style="display:flex;gap:6px;align-items:center;">' +
+              '<input type="text" id="vehiclePlateEdit_' + p.id + '" value="' + escapeHtml(p.vehicle_plate || "") + '" placeholder="ระบุทะเบียนรถ" style="width:120px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">' +
+              '<button class="btnGhost" style="padding:5px 10px;font-size:11.5px;" onclick="saveVehiclePlate(\'' + p.id + '\')">บันทึก</button>' +
+            '</span></div>' :
+          '<div class="kv"><span class="k">ทะเบียนรถ</span><span>' + escapeHtml(p.vehicle_plate || "-") + '</span></div>') +
         '<div class="kv"><span class="k">มูลค่าสินค้า (โดยประมาณ)</span><span>' + fmtMoney(p.item_value, p.item_value_currency) + '</span></div>' +
         (p.note ? '<div class="kv"><span class="k">หมายเหตุ</span><span>' + escapeHtml(p.note) + '</span></div>' : "") +
         (p.return_notice_date ? '<div class="kv"><span class="k">แจ้งนำกลับ</span><span>' + escapeHtml(p.return_notice_date) + ' ' + escapeHtml(p.return_notice_time || "") + '</span></div>' : "") +
@@ -1086,7 +1112,9 @@ function openPassDetail(id) {
       '<div class="detailSection">' +
         '<h4>ผู้อนุมัติ</h4>' +
         '<div class="kv"><span class="k">ขั้น 1</span><span>' + (p.l1_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(p.approver_l1_name) + ' · ' + fmtDateTime(p.l1_approved_at) : escapeHtml(p.approver_l1_name) + ' (รอดำเนินการ)') + '</span></div>' +
-        '<div class="kv"><span class="k">ขั้น 2</span><span>' + (p.l2_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(p.approver_l2_name) + ' · ' + fmtDateTime(p.l2_approved_at) : escapeHtml(p.approver_l2_name) + ' (รอดำเนินการ)') + '</span></div>' +
+        (p.skip_l2_approval ?
+          '<div class="kv"><span class="k">ขั้น 2</span><span style="color:var(--muted);">ไม่ต้องอนุมัติ (Not required)</span></div>' :
+          '<div class="kv"><span class="k">ขั้น 2</span><span>' + (p.l2_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(p.approver_l2_name) + ' · ' + fmtDateTime(p.l2_approved_at) : escapeHtml(p.approver_l2_name) + ' (รอดำเนินการ)') + '</span></div>') +
         (p.status === "rejected" ? '<div class="kv"><span class="k">เหตุผลปฏิเสธ</span><span>' + escapeHtml(p.rejected_reason || "-") + '</span></div>' : "") +
       '</div>' +
 
@@ -1130,6 +1158,21 @@ function extensionApprovalPanel(p, stage) {
     '<button class="btnSuccess" onclick="approveExtension(\'' + p.id + '\',\'' + stage + '\')">✔ อนุมัติการขยายเวลา</button>' +
     '<button class="btnDanger" onclick="rejectExtension(\'' + p.id + '\',\'' + stage + '\')">✕ ปฏิเสธ</button>' +
   '</div>';
+}
+
+async function saveVehiclePlate(id) {
+  const el = document.getElementById("vehiclePlateEdit_" + id);
+  if (!el) return;
+  const val = el.value.trim();
+  try {
+    await db.collection("passes").doc(id).update({
+      vehicle_plate: val,
+      vehicle_plate_updated_by: currentProfile.email,
+      vehicle_plate_updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("บันทึกทะเบียนรถแล้ว", "ok");
+  } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
 async function cancelRequest(id) {
@@ -1287,10 +1330,11 @@ function closeModal() { document.getElementById("modalRoot").innerHTML = ""; win
 
 async function approvePass(id, stage) {
   const p = allPasses.find(x => x.id === id);
+  const skipL2 = !!(p && p.skip_l2_approval);
   try {
     const update = { updated_at: firebase.firestore.FieldValue.serverTimestamp() };
     if (stage === "l1") {
-      update.status = "pending_l2";
+      update.status = skipL2 ? "approved" : "pending_l2";
       update.l1_approved_at = firebase.firestore.FieldValue.serverTimestamp();
       update.l1_approved_by = currentProfile.email;
     } else {
@@ -1302,7 +1346,17 @@ async function approvePass(id, stage) {
     showToast("อนุมัติสำเร็จ", "ok");
     closeModal();
     if (p) {
-      if (stage === "l1") {
+      if (stage === "l1" && skipL2) {
+        sendNotifyEmail(
+          p.requester_email, p.requester_name,
+          biSubject("คำขอได้รับอนุมัติแล้ว", "Request approved") + " - " + p.pass_no,
+          biMessage(
+            "คำขอนำของออก (ส่งกำจัดขยะติดเชื้อจากห้องพยาบาล) ของคุณได้รับอนุมัติจากผจก.แผนกแล้ว (ไม่ต้องผ่านอนุมัติขั้นที่ 2) พร้อมนำออกได้ (รอ รปภ. ตรวจของก่อนออกจากโรงงาน)",
+            "Your removal request (Infectious Waste Disposal — Medical Room) has been approved by the Department Manager (Level 2 approval is not required for this type) and is ready for removal (pending Security inspection at the gate)."
+          ),
+          p.pass_no
+        );
+      } else if (stage === "l1") {
         sendNotifyEmail(
           p.approver_l2_email, p.approver_l2_name,
           biSubject("รออนุมัติขั้น 2", "Awaiting your Level 2 approval") + " - " + p.pass_no,
