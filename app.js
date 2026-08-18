@@ -85,6 +85,8 @@ let DEPARTMENTS = DEPARTMENTS_DEFAULT.map(d => ({ ...d }));
 const REMOVAL_TYPES = [
   { id: "repair", th: "ซ่อม", en: "Repair", requires_return: true },
   { id: "calibration", th: "สอบเทียบ", en: "Calibration", requires_return: true },
+  { id: "cleaning", th: "ทำความสะอาด", en: "Cleaning", requires_return: true },
+  { id: "pm", th: "บำรุงรักษาเชิงป้องกัน (PM)", en: "Preventive Maintenance (PM)", requires_return: true },
   { id: "return_vendor", th: "คืนผู้ให้บริการ", en: "Return to Vendor", requires_return: false },
   { id: "external_testing", th: "ทดสอบภายนอก", en: "External Testing", requires_return: true },
   { id: "sale", th: "ขายออก", en: "Sale", requires_return: false },
