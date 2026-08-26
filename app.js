@@ -92,7 +92,7 @@ const REMOVAL_TYPES = [
   { id: "external_testing", th: "ทดสอบภายนอก", en: "External Testing", requires_return: true },
   { id: "sale", th: "ขายออก", en: "Sale", requires_return: false },
   { id: "infectious_waste", th: "ส่งกำจัดขยะติดเชื้อจากห้องพยาบาล", en: "Infectious Waste Disposal (Medical Room)", requires_return: false, skip_value: true, skip_l2: true },
-  { id: "other", th: "อื่นๆ", en: "Other", requires_return: false, needs_detail: true }
+  { id: "other", th: "อื่นๆ", en: "Other", requires_return: false, needs_detail: true, has_return_choice: true }
 ];
 
 const UNITS = ["ชิ้น", "กล่อง", "ม้วน", "เครื่อง", "ใบ", "ชุด", "อัน", "กก."];
@@ -721,6 +721,13 @@ function renderNewRequestView() {
         '<label>ระบุรายละเอียดวัตถุประสงค์ *</label>' +
         '<input type="text" id="reqPurposeDetail" placeholder="ระบุรายละเอียด...">' +
       '</div>' +
+      '<div class="field" id="otherReturnWrap" style="margin-top:14px;display:none;">' +
+        '<label>ต้องนำกลับหรือไม่ *</label>' +
+        '<div style="display:flex;gap:20px;margin-top:8px;">' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="yes" onchange="onOtherReturnChoiceChange()"> ต้องนำกลับ</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="no" onchange="onOtherReturnChoiceChange()"> ไม่ต้องนำกลับ</label>' +
+        '</div>' +
+      '</div>' +
       '<div class="field" id="dueDateWrap" style="margin-top:14px;display:none;">' +
         '<label>กำหนดวันนำกลับ (Due date)</label>' +
         '<input type="date" id="reqDueDate">' +
@@ -755,10 +762,23 @@ function onDeptChange() {
 
 function onPurposeChange() {
   const rt = removalTypeById(document.getElementById("reqPurpose").value);
-  document.getElementById("dueDateWrap").style.display = (rt && rt.requires_return) ? "" : "none";
   document.getElementById("purposeDetailWrap").style.display = (rt && rt.needs_detail) ? "" : "none";
   document.getElementById("valueWrap").style.display = (rt && rt.skip_value) ? "none" : "";
   document.getElementById("l2Wrap").style.display = (rt && rt.skip_l2) ? "none" : "";
+  const hasChoice = !!(rt && rt.has_return_choice);
+  document.getElementById("otherReturnWrap").style.display = hasChoice ? "" : "none";
+  if (hasChoice) {
+    document.querySelectorAll('input[name="otherReturnChoice"]').forEach(r => { r.checked = false; });
+    document.getElementById("dueDateWrap").style.display = "none";
+  } else {
+    document.getElementById("dueDateWrap").style.display = (rt && rt.requires_return) ? "" : "none";
+  }
+}
+
+function onOtherReturnChoiceChange() {
+  const checked = document.querySelector('input[name="otherReturnChoice"]:checked');
+  const val = checked ? checked.value : null;
+  document.getElementById("dueDateWrap").style.display = (val === "yes") ? "" : "none";
 }
 
 function addItemRow() {
@@ -864,6 +884,12 @@ async function submitNewRequest() {
   if (!name) return showToast("กรุณากรอกชื่อผู้ขอ", "err");
   if (!purpose) return showToast("กรุณาเลือกวัตถุประสงค์", "err");
   if (rt && rt.needs_detail && !purposeDetail) return showToast("กรุณาระบุรายละเอียดวัตถุประสงค์", "err");
+  let effectiveRequiresReturn = !!(rt && rt.requires_return);
+  if (rt && rt.has_return_choice) {
+    const checkedEl = document.querySelector('input[name="otherReturnChoice"]:checked');
+    if (!checkedEl) return showToast("กรุณาเลือกว่าต้องนำกลับหรือไม่", "err");
+    effectiveRequiresReturn = checkedEl.value === "yes";
+  }
   const skipL2 = !!(rt && rt.skip_l2);
   if (!skipL2 && !l2email) return showToast("กรุณาเลือกผู้อนุมัติขั้น 2", "err");
   if (!rt || !rt.skip_value) {
@@ -892,14 +918,14 @@ async function submitNewRequest() {
       requester_dept: dept,
       requester_phone: phone,
       requester_email: currentProfile.email,
-      purpose_th: rt.th, purpose_en: rt.en, removal_type: rt.id, requires_return: rt.requires_return,
+      purpose_th: rt.th, purpose_en: rt.en, removal_type: rt.id, requires_return: effectiveRequiresReturn,
       purpose_detail: purposeDetail || null,
       destination: destination, vehicle_plate: vehicle,
       approver_l1_email: deptObj.l1_email, approver_l1_name: deptObj.l1_name,
       approver_l2_email: skipL2 ? null : l2.email, approver_l2_name: skipL2 ? null : l2.name,
       skip_l2_approval: skipL2,
       note: note,
-      due_date: (rt.requires_return && dueDate) ? dueDate : null,
+      due_date: (effectiveRequiresReturn && dueDate) ? dueDate : null,
       item_value: skipValue ? null : itemValue,
       item_value_currency: skipValue ? null : itemCurrency,
       items: newRequestItems.map(i => ({ name: i.name, qty: i.qty, unit: i.unit, note: i.note, photo_urls: i.photoUrls })),
