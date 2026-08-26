@@ -49,6 +49,31 @@ async function sendNotifyEmail(toEmail, toName, subject, message, passNo) {
   }
 }
 
+// Sends to several recipients in a SINGLE EmailJS request (comma-separated "to") instead of
+// looping sendNotifyEmail per person — uses 1 unit of EmailJS quota instead of N. Use this only
+// for the rare cases where a whole group genuinely needs the same notice (e.g. "any of you can
+// pick this up"); for normal process handoffs, notify just the specific next actor instead.
+async function sendNotifyEmailMulti(recipients, subject, message, passNo) {
+  const list = (recipients || []).filter(r => r && r.email);
+  if (list.length === 0) return;
+  if (EMAILJS_SERVICE_ID === "YOUR_SERVICE_ID") {
+    console.warn("EmailJS not configured yet — skipping email:", subject, "to", list.map(r => r.email).join(","));
+    return;
+  }
+  try {
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: list.map(r => r.email).join(","),
+      to_name: list.map(r => r.name).filter(Boolean).join(", "),
+      subject: subject,
+      message: message,
+      pass_no: passNo || "",
+      link: window.location.origin + window.location.pathname
+    });
+  } catch (e) {
+    console.error("Email send failed:", e);
+  }
+}
+
 // ---------- Cloudinary ----------
 const CLOUDINARY_CLOUD_NAME = "yv2qgreu";
 const CLOUDINARY_UPLOAD_PRESET = "nbc_property_removal";
@@ -119,6 +144,9 @@ const RETURN_NOTICE_RECIPIENTS = [
   { email: "nbc_guardhouse@natureworkspla.com", name: "รปภ. (Guardhouse)" },
   ...EHS_GROUP
 ];
+// The single primary gate-inspection contact — used for process handoffs where only the
+// next actual actor needs a notification, rather than broadcasting to the whole Safety team.
+const SECURITY_CONTACT = { email: "nbc_guardhouse@natureworkspla.com", name: "รปภ. (Guardhouse)" };
 
 // email(lowercase) -> profile
 // NOTE: dept_manager and l2_approver roles are now derived DYNAMICALLY at login time by matching the
@@ -234,17 +262,15 @@ async function doForgotPassword() {
   const btn = document.getElementById("btnForgot");
   btn.disabled = true; btn.innerHTML = '<span class="loadingSpin"></span>กำลังแจ้ง...';
   try {
-    EHS_GROUP.forEach(r => {
-      sendNotifyEmail(
-        r.email, r.name,
-        biSubject("มีคนแจ้งลืมรหัสผ่าน - โปรดช่วยรีเซ็ตบัญชี", "Password reset requested — please assist"),
-        biMessage(
-          name + " (" + email + ") แจ้งลืมรหัสผ่านในระบบ Plant Property Removal Request กรุณาเข้า Firebase Console → Authentication → Users → ค้นหา Email นี้ → Delete account จากนั้นแจ้งให้เขาสมัครใช้งานใหม่ด้วย Email เดิม (ประวัติคำขอและสิทธิ์การใช้งานเดิมจะไม่หายไปไหน เพราะผูกกับ Email)",
-          name + " (" + email + ") has reported a forgotten password for the Plant Property Removal Request system. Please go to Firebase Console → Authentication → Users → find this email → Delete account, then ask them to sign up again with the same email (their request history and access rights will remain intact, since everything is tied to email, not the account itself)."
-        ),
-        ""
-      );
-    });
+    sendNotifyEmailMulti(
+      EHS_GROUP,
+      biSubject("มีคนแจ้งลืมรหัสผ่าน - โปรดช่วยรีเซ็ตบัญชี", "Password reset requested — please assist"),
+      biMessage(
+        name + " (" + email + ") แจ้งลืมรหัสผ่านในระบบ Plant Property Removal Request กรุณาเข้า Firebase Console → Authentication → Users → ค้นหา Email นี้ → Delete account จากนั้นแจ้งให้เขาสมัครใช้งานใหม่ด้วย Email เดิม (ประวัติคำขอและสิทธิ์การใช้งานเดิมจะไม่หายไปไหน เพราะผูกกับ Email)",
+        name + " (" + email + ") has reported a forgotten password for the Plant Property Removal Request system. Please go to Firebase Console → Authentication → Users → find this email → Delete account, then ask them to sign up again with the same email (their request history and access rights will remain intact, since everything is tied to email, not the account itself)."
+      ),
+      ""
+    );
     showAuthMsg("แจ้งทีม Safety Department แล้ว กรุณารอการติดต่อกลับเพื่อรีเซ็ตบัญชี จากนั้นกลับมาสมัครใช้งานใหม่ด้วย Email เดิม", "ok");
   } catch (e) {
     showAuthMsg("เกิดข้อผิดพลาด: " + e.message, "err");
@@ -816,7 +842,7 @@ function renderItemRows() {
             '<div class="photoAddTile"><div class="icon">⏳</div><div>อัปโหลด...</div></div>' :
             '<div class="photoAddTile" onclick="document.getElementById(\'file_' + it.id + '\').click()"><div class="icon">📷</div><div>เพิ่มรูป</div></div>') +
         '</div>' +
-        '<input type="file" id="file_' + it.id + '" accept="image/*" capture="environment" class="hidden" onchange="onItemPhotoSelected(' + it.id + ', this.files[0]); this.value=\'\';">' +
+        '<input type="file" id="file_' + it.id + '" accept="image/*" class="hidden" onchange="onItemPhotoSelected(' + it.id + ', this.files[0]); this.value=\'\';">' +
       '</div>' +
       '<div class="field" style="margin-top:10px;"><label>หมายเหตุรายการ</label><input type="text" value="' + escapeHtml(it.note) + '" oninput="updateItemField(' + it.id + ',\'note\',this.value)" placeholder="หมายเหตุ (ถ้ามี)"></div>' +
     '</div>';
@@ -1224,17 +1250,15 @@ async function cancelRequest(id) {
       const recipients = [];
       if (p.approver_l1_email) recipients.push({ email: p.approver_l1_email, name: p.approver_l1_name });
       if (p.approver_l2_email && p.approver_l2_email !== p.approver_l1_email) recipients.push({ email: p.approver_l2_email, name: p.approver_l2_name });
-      recipients.forEach(r => {
-        sendNotifyEmail(
-          r.email, r.name,
-          biSubject("คำขอถูกยกเลิกโดยผู้ขอ", "Request cancelled by requester") + " - " + p.pass_no,
-          biMessage(
-            p.requester_name + " ยกเลิกคำขอนำของออก " + p.pass_no + " แล้ว ไม่ต้องดำเนินการอนุมัติต่อ",
-            p.requester_name + " has cancelled removal request " + p.pass_no + ". No further approval action is needed."
-          ),
-          p.pass_no
-        );
-      });
+      sendNotifyEmailMulti(
+        recipients,
+        biSubject("คำขอถูกยกเลิกโดยผู้ขอ", "Request cancelled by requester") + " - " + p.pass_no,
+        biMessage(
+          p.requester_name + " ยกเลิกคำขอนำของออก " + p.pass_no + " แล้ว ไม่ต้องดำเนินการอนุมัติต่อ",
+          p.requester_name + " has cancelled removal request " + p.pass_no + ". No further approval action is needed."
+        ),
+        p.pass_no
+      );
     }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
@@ -1290,15 +1314,6 @@ async function approveExtension(id, stage) {
           biMessage(
             p.requester_name + " ขอขยายเวลานำของกลับ เป็นวันที่ " + p.ext_requested_due_date + " รอการอนุมัติขั้นที่ 2 จากท่าน",
             p.requester_name + " has requested to extend the return date to " + p.ext_requested_due_date + ". It is now awaiting your Level 2 approval."
-          ),
-          p.pass_no
-        );
-        sendNotifyEmail(
-          p.requester_email, p.requester_name,
-          biSubject("คำขอขยายเวลาผ่านขั้น 1 แล้ว", "Extension request passed Level 1") + " - " + p.pass_no,
-          biMessage(
-            "คำขอขยายเวลานำของกลับผ่านการอนุมัติขั้นที่ 1 แล้ว กำลังรออนุมัติขั้นที่ 2",
-            "Your return-date extension request has passed Level 1 approval and is now awaiting Level 2 approval."
           ),
           p.pass_no
         );
@@ -1396,15 +1411,6 @@ async function approvePass(id, stage) {
           biMessage(
             p.requester_name + " (" + deptNameById(p.requester_dept) + ") รอการอนุมัติขั้นที่ 2 จากท่าน กรุณาเข้าระบบเพื่อตรวจสอบ",
             p.requester_name + " (" + deptNameById(p.requester_dept) + ") is awaiting your Level 2 approval. Please log in to review."
-          ),
-          p.pass_no
-        );
-        sendNotifyEmail(
-          p.requester_email, p.requester_name,
-          biSubject("คำขอผ่านอนุมัติขั้น 1 แล้ว", "Request passed Level 1 approval") + " - " + p.pass_no,
-          biMessage(
-            "คำขอนำของออกของคุณผ่านการอนุมัติขั้นที่ 1 แล้ว กำลังรออนุมัติขั้นที่ 2 จาก " + p.approver_l2_name,
-            "Your removal request has passed Level 1 approval and is now awaiting Level 2 approval from " + p.approver_l2_name + "."
           ),
           p.pass_no
         );
@@ -1508,7 +1514,7 @@ function itemPhotoCompareHtml(items) {
           (uploading ? '<div class="photoAddTile"><div class="icon">⏳</div></div>' :
            url ? '<div class="photoThumb"><img src="' + url + '" onclick="openLightbox(\'' + url + '\')"><button type="button" class="rm" onclick="clearItemStagePhoto(' + idx + ')">✕</button></div>' :
            '<div class="photoAddTile" onclick="document.getElementById(\'stagePhoto_' + idx + '\').click()"><div class="icon">📷</div></div>') +
-          '<input type="file" id="stagePhoto_' + idx + '" accept="image/*" capture="environment" class="hidden" onchange="onItemStagePhotoSelected(' + idx + ', this.files[0])">' +
+          '<input type="file" id="stagePhoto_' + idx + '" accept="image/*" class="hidden" onchange="onItemStagePhotoSelected(' + idx + ', this.files[0])">' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -1591,17 +1597,6 @@ async function submitReturnNotice(id) {
     });
     showToast("แจ้งนำของกลับสำเร็จ เมื่อของถึงแล้วกลับมาตรวจสอบ+แนบรูปในระบบอีกครั้ง", "ok");
     closeModal();
-    if (p) {
-      sendNotifyEmail(
-        p.requester_email, p.requester_name,
-        biSubject("แจ้งนำของกลับสำเร็จ", "Return notice submitted") + " - " + p.pass_no,
-        biMessage(
-          "แจ้งนำของกลับวันที่ " + date + " เวลาประมาณ " + time + " เรียบร้อย เมื่อของถึงโรงงานแล้ว กรุณากลับเข้าระบบเพื่อตรวจสอบของและแนบรูปยืนยันก่อนส่งต่อให้ รปภ./Safety ตรวจสอบ",
-          "Your return notice for " + date + " at approximately " + time + " has been submitted. Once the items arrive, please log back in to inspect them and attach a confirmation photo before handing off to Security/Safety."
-        ),
-        p.pass_no
-      );
-    }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
@@ -1622,17 +1617,15 @@ async function submitSelfCheckReturn(id) {
     resetItemStagePhotos();
     closeModal();
     if (p) {
-      RETURN_NOTICE_RECIPIENTS.forEach(r => {
-        sendNotifyEmail(
-          r.email, r.name,
-          biSubject("โปรดตรวจของที่นำกลับ", "Please inspect returned items") + " - " + p.pass_no,
-          biMessage(
-            p.requester_name + " (" + deptNameById(p.requester_dept) + ") ตรวจสอบของที่นำเข้าเบื้องต้นแล้ว กรุณาตรวจของและถ่ายรูปยืนยันในระบบ (Tab \"Security Check\")",
-            p.requester_name + " (" + deptNameById(p.requester_dept) + ") has completed the initial inspection of the returned items. Please inspect them and attach a confirmation photo in the system (\"Security Check\" tab)."
-          ),
-          p.pass_no
-        );
-      });
+      sendNotifyEmail(
+        SECURITY_CONTACT.email, SECURITY_CONTACT.name,
+        biSubject("โปรดตรวจของที่นำกลับ", "Please inspect returned items") + " - " + p.pass_no,
+        biMessage(
+          p.requester_name + " (" + deptNameById(p.requester_dept) + ") ตรวจสอบของที่นำเข้าเบื้องต้นแล้ว กรุณาตรวจของและถ่ายรูปยืนยันในระบบ (Tab \"Security Check\")",
+          p.requester_name + " (" + deptNameById(p.requester_dept) + ") has completed the initial inspection of the returned items. Please inspect them and attach a confirmation photo in the system (\"Security Check\" tab)."
+        ),
+        p.pass_no
+      );
     }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
@@ -1663,15 +1656,6 @@ async function confirmReturn(id) {
         ),
         p.pass_no
       );
-      sendNotifyEmail(
-        p.requester_email, p.requester_name,
-        biSubject("ผ่านการตรวจของแล้ว", "Item inspection completed") + " - " + p.pass_no,
-        biMessage(
-          "รปภ./Safety ตรวจสอบของที่นำกลับเรียบร้อยแล้ว อยู่ระหว่างรอผจก.แผนกและ Safety Department Head อนุมัติปิดคำขอ",
-          "Security/Safety has completed inspection of the returned items. The request is now awaiting closing approval from the Department Manager and Safety Department Head."
-        ),
-        p.pass_no
-      );
     }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
@@ -1695,15 +1679,6 @@ async function approveReturnL1(id) {
         biMessage(
           "คำขอนำของกลับของ " + p.requester_name + " ผ่านการรับทราบจาก " + p.approver_l1_name + " แล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย",
           "The return request for " + p.requester_name + " has been acknowledged by " + p.approver_l1_name + ". Please approve closing the request as the final step."
-        ),
-        p.pass_no
-      );
-      sendNotifyEmail(
-        p.requester_email, p.requester_name,
-        biSubject("ใกล้ปิดคำขอแล้ว", "Request is almost closed") + " - " + p.pass_no,
-        biMessage(
-          "คำขอนำของกลับผ่านการรับทราบจากผจก.แผนกแล้ว รอ Safety Department Head อนุมัติปิดคำขอขั้นตอนสุดท้าย",
-          "Your return request has been acknowledged by the Department Manager and is now awaiting final closing approval from the Safety Department Head."
         ),
         p.pass_no
       );
@@ -1754,23 +1729,17 @@ async function approveReturnEhs(id) {
     if (p) {
       const closingRecipients = [
         { email: p.requester_email, name: p.requester_name },
-        { email: p.approver_l1_email, name: p.approver_l1_name },
-        ...EHS_GROUP
+        { email: p.approver_l1_email, name: p.approver_l1_name }
       ];
-      const seen = {};
-      closingRecipients.forEach(r => {
-        if (!r.email || seen[r.email.toLowerCase()]) return;
-        seen[r.email.toLowerCase()] = true;
-        sendNotifyEmail(
-          r.email, r.name,
-          biSubject("ปิดคำขอสมบูรณ์", "Request closed successfully") + " - " + p.pass_no,
-          biMessage(
-            "ของนำเข้าเรียบร้อย ตรวจสอบครบทุกขั้นตอนแล้ว ปิดใบคำขอ " + p.pass_no + " เรียบร้อย",
-            "Items have been returned and verified at every step. Request " + p.pass_no + " is now closed."
-          ),
-          p.pass_no
-        );
-      });
+      sendNotifyEmailMulti(
+        closingRecipients,
+        biSubject("ปิดคำขอสมบูรณ์", "Request closed successfully") + " - " + p.pass_no,
+        biMessage(
+          "ของนำเข้าเรียบร้อย ตรวจสอบครบทุกขั้นตอนแล้ว ปิดใบคำขอ " + p.pass_no + " เรียบร้อย",
+          "Items have been returned and verified at every step. Request " + p.pass_no + " is now closed."
+        ),
+        p.pass_no
+      );
     }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
