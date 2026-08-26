@@ -87,6 +87,7 @@ const REMOVAL_TYPES = [
   { id: "calibration", th: "สอบเทียบ", en: "Calibration", requires_return: true },
   { id: "cleaning", th: "ทำความสะอาด", en: "Cleaning", requires_return: true },
   { id: "pm", th: "บำรุงรักษาเชิงป้องกัน (PM)", en: "Preventive Maintenance (PM)", requires_return: true },
+  { id: "fire_extinguisher_refill", th: "เติมน้ำยาถังดับเพลิง", en: "Refill Fire Extinguisher", requires_return: true },
   { id: "return_vendor", th: "คืนผู้ให้บริการ", en: "Return to Vendor", requires_return: false },
   { id: "external_testing", th: "ทดสอบภายนอก", en: "External Testing", requires_return: true },
   { id: "sale", th: "ขายออก", en: "Sale", requires_return: false },
@@ -646,10 +647,14 @@ function renderPassesView() {
 
 function setSubFilter(id) { currentSubFilter = id; renderPassesView(); }
 
+function getStatusDisplay(p) {
+  if (isOverdue(p)) return { cls: "overdue", text: "Overdue" };
+  if (p.status === "issued" && !p.requires_return) return { cls: "closed_done", text: "ออกแล้ว — คำขอถูกปิดแล้ว" };
+  return { cls: p.status, text: STATUS_LABEL[p.status] || p.status };
+}
+
 function passCardHtml(p) {
-  const overdue = isOverdue(p);
-  const badgeClass = overdue ? "overdue" : p.status;
-  const badgeText = overdue ? "Overdue" : (STATUS_LABEL[p.status] || p.status);
+  const sd = getStatusDisplay(p);
   const rt = removalTypeById(p.removal_type);
   const extBadge = p.ext_status ? '<span class="badge ext-badge" style="margin-left:6px;">ขอต่ออายุ ครั้งที่ ' + ((p.ext_count || 0) + 1) + '</span>' : "";
   return '<div class="passCard" onclick="openPassDetail(\'' + p.id + '\')">' +
@@ -660,7 +665,7 @@ function passCardHtml(p) {
     '<div class="meta">' + (rt ? escapeHtml(rt.th) + "/" + escapeHtml(rt.en) : "") + (p.due_date ? " · Due: " + escapeHtml(p.due_date) : "") + '</div>' +
     '</div>' +
     '<div style="text-align:right;">' +
-    '<span class="badge ' + badgeClass + '">' + badgeText + '</span>' + extBadge +
+    '<span class="badge ' + sd.cls + '">' + sd.text + '</span>' + extBadge +
     '</div>' +
     '</div>' +
     '</div>';
@@ -1082,7 +1087,7 @@ function openPassDetail(id) {
       '<div class="modalHead">' +
         '<div>' +
           '<h2>' + escapeHtml(p.pass_no) + '</h2>' +
-          '<span class="badge ' + (isOverdue(p) ? "overdue" : p.status) + '">' + (isOverdue(p) ? "Overdue" : (STATUS_LABEL[p.status] || p.status)) + '</span>' +
+          '<span class="badge ' + getStatusDisplay(p).cls + '">' + getStatusDisplay(p).text + '</span>' +
         '</div>' +
         '<button onclick="closeModal()">✕</button>' +
       '</div>' +
