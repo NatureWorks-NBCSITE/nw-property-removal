@@ -309,8 +309,9 @@ async function doLogin() {
 async function doSignup() {
   const name = document.getElementById("suName").value.trim();
   const email = document.getElementById("suEmail").value.trim();
+  const dept = document.getElementById("suDept").value;
   const pw = document.getElementById("suPassword").value;
-  if (!name || !email || !pw) { showAuthMsg("กรอกข้อมูลให้ครบ", "err"); return; }
+  if (!name || !email || !dept || !pw) { showAuthMsg("กรอกข้อมูลให้ครบ", "err"); return; }
   if (!emailDomainOk(email)) { showAuthMsg("กรุณาใช้ Email บริษัท (@natureworkspla.com หรือ @natureworksco.com)", "err"); return; }
   if (pw.length < 6) { showAuthMsg("Password ต้องมีอย่างน้อย 6 ตัวอักษร", "err"); return; }
   const btn = document.getElementById("btnSignup");
@@ -319,7 +320,7 @@ async function doSignup() {
     const cred = await auth.createUserWithEmailAndPassword(email, pw);
     await cred.user.updateProfile({ displayName: name });
     await db.collection("users").doc(email.toLowerCase()).set({
-      name, email: email.toLowerCase(), created_at: firebase.firestore.FieldValue.serverTimestamp()
+      name, email: email.toLowerCase(), department: dept, created_at: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {
     showAuthMsg(translateAuthErr(e), "err");
@@ -327,6 +328,26 @@ async function doSignup() {
     btn.disabled = false; btn.textContent = "สมัครใช้งาน";
   }
 }
+
+async function saveMyDepartment() {
+  const sel = document.getElementById("myDeptSelect");
+  const dept = sel ? sel.value : "";
+  if (!dept) return showToast("กรุณาเลือกแผนก", "err");
+  try {
+    await db.collection("users").doc(currentProfile.email).set({ department: dept }, { merge: true });
+    currentProfile.department = dept;
+    showToast("บันทึกแผนกแล้ว", "ok");
+    renderPassesView();
+  } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
+}
+
+function populateSignupDeptOptions() {
+  const sel = document.getElementById("suDept");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">เลือกแผนก</option>' +
+    DEPARTMENTS.map(d => '<option value="' + d.id + '">' + d.name_th + '</option>').join("");
+}
+populateSignupDeptOptions();
 
 function translateAuthErr(e) {
   const code = e.code || "";
@@ -438,13 +459,17 @@ async function resolveUserProfile(email, authDisplayName) {
   }
 
   if (roles.length === 0) {
-    // general requester — try to load their signup name
+    // general requester — try to load their signup name + department
     let displayName = authDisplayName || email;
+    let userDept = null;
     try {
       const udoc = await db.collection("users").doc(email).get();
-      if (udoc.exists) displayName = udoc.data().name || displayName;
+      if (udoc.exists) {
+        displayName = udoc.data().name || displayName;
+        userDept = udoc.data().department || null;
+      }
     } catch (e) {}
-    return { email, name: displayName, roles: ["requester"], department: null, dashboard: "none" };
+    return { email, name: displayName, roles: ["requester"], department: userDept, dashboard: "none" };
   }
 
   return { email, name: name || authDisplayName || email, roles: [...new Set(roles)], department, dashboard };
@@ -592,7 +617,7 @@ function visibleDeptIdsForCurrentUser() {
 // Passes visible to current user according to permission matrix
 function getVisiblePasses(list) {
   const roles = currentProfile.roles;
-  if (roles.includes("test_admin") || roles.includes("admin") || roles.includes("security") || roles.includes("requester")) {
+  if (roles.includes("test_admin") || roles.includes("admin") || roles.includes("security")) {
     return list; // see all
   }
   if (roles.includes("dept_manager")) {
@@ -602,7 +627,8 @@ function getVisiblePasses(list) {
   if (roles.includes("l2_approver")) {
     return list.filter(p => p.approver_l2_email === currentProfile.email);
   }
-  return list;
+  // General requester (no special role) — only their own submitted requests, not everyone's.
+  return list.filter(p => p.requester_email === currentProfile.email);
 }
 
 // PASSES LIST VIEW rendering, new request form, detail modal, tracking, dashboard, admin views appended below.
@@ -611,6 +637,9 @@ function renderPassesView() {
   const el = document.getElementById("view-passes");
   const roles = currentProfile.roles;
   const subtabs = [{ id: "all", label: "All / ทั้งหมด" }];
+  if (roles.includes("requester") && currentProfile.department) {
+    subtabs.push({ id: "my_dept", label: "แผนกของฉัน / My Department" });
+  }
   if (roles.includes("dept_manager") || roles.includes("test_admin")) {
     subtabs.push({ id: "pending_approval", label: "Pending Approval / รอฉัน (ผจก.)" });
   }
@@ -623,7 +652,9 @@ function renderPassesView() {
 
   let visible = getVisiblePasses(allPasses);
 
-  if (currentSubFilter === "pending_approval") {
+  if (currentSubFilter === "my_dept") {
+    visible = allPasses.filter(p => p.requester_dept === currentProfile.department);
+  } else if (currentSubFilter === "pending_approval") {
     const depts = visibleDeptIdsForCurrentUser();
     const ehsMgrEmail = (DEPARTMENTS.find(d => d.id === "ehs") || {}).l1_email;
     visible = allPasses.filter(p =>
@@ -647,7 +678,18 @@ function renderPassesView() {
   }
   if (statusFilter !== "all") visible = visible.filter(p => p.status === statusFilter);
 
-  let html = '<div class="subtabs">';
+  let html = "";
+  if (roles.includes("requester") && !currentProfile.department) {
+    html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+      '<span style="font-size:12.5px;color:var(--text);">ยังไม่ได้ตั้งแผนกของคุณ — ตั้งไว้เพื่อดูใบคำขอของแผนกตัวเองได้:</span>' +
+      '<select id="myDeptSelect" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">' +
+        '<option value="">เลือกแผนก</option>' +
+        DEPARTMENTS.map(d => '<option value="' + d.id + '">' + d.name_th + '</option>').join("") +
+      '</select>' +
+      '<button class="btnGhost" style="padding:6px 14px;font-size:12.5px;" onclick="saveMyDepartment()">บันทึก</button>' +
+    '</div>';
+  }
+  html += '<div class="subtabs">';
   subtabs.forEach(t => {
     html += '<button class="' + (currentSubFilter === t.id ? "active" : "") + '" onclick="setSubFilter(\'' + t.id + '\')">' + t.label + '</button>';
   });
