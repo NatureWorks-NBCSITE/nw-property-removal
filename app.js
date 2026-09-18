@@ -731,6 +731,7 @@ function renderNewRequestView() {
     '<div class="formCard">' +
       '<h3>รายละเอียดการนำออก / Removal Details</h3>' +
       '<div class="grid2">' +
+        '<div class="field"><label>วันที่นำของออก *</label><input type="date" id="reqRemovalDate"></div>' +
         '<div class="field"><label>ปลายทาง</label><input type="text" id="reqDestination" placeholder="สถานที่ปลายทาง"></div>' +
         '<div class="field"><label>ทะเบียนรถ</label><input type="text" id="reqVehicle" placeholder="1กข-1234"></div>' +
         '<div class="field"><label>ผู้อนุมัติขั้น 1 (อัตโนมัติตามแผนก)</label>' +
@@ -896,6 +897,7 @@ async function submitNewRequest() {
   const phone = document.getElementById("reqPhone").value.trim();
   const purpose = document.getElementById("reqPurpose").value;
   const purposeDetail = document.getElementById("reqPurposeDetail").value.trim();
+  const removalDate = document.getElementById("reqRemovalDate").value;
   const destination = document.getElementById("reqDestination").value.trim();
   const vehicle = document.getElementById("reqVehicle").value.trim();
   const l2email = document.getElementById("reqL2").value;
@@ -909,6 +911,7 @@ async function submitNewRequest() {
   if (!dept) return showToast("กรุณาเลือกแผนก", "err");
   if (!name) return showToast("กรุณากรอกชื่อผู้ขอ", "err");
   if (!purpose) return showToast("กรุณาเลือกวัตถุประสงค์", "err");
+  if (!removalDate) return showToast("กรุณาระบุวันที่นำของออก", "err");
   if (rt && rt.needs_detail && !purposeDetail) return showToast("กรุณาระบุรายละเอียดวัตถุประสงค์", "err");
   let effectiveRequiresReturn = !!(rt && rt.requires_return);
   if (rt && rt.has_return_choice) {
@@ -946,6 +949,7 @@ async function submitNewRequest() {
       requester_email: currentProfile.email,
       purpose_th: rt.th, purpose_en: rt.en, removal_type: rt.id, requires_return: effectiveRequiresReturn,
       purpose_detail: purposeDetail || null,
+      removal_date: removalDate,
       destination: destination, vehicle_plate: vehicle,
       approver_l1_email: deptObj.l1_email, approver_l1_name: deptObj.l1_name,
       approver_l2_email: skipL2 ? null : l2.email, approver_l2_name: skipL2 ? null : l2.name,
@@ -1155,6 +1159,7 @@ function openPassDetail(id) {
           '<span style="font-weight:700;font-size:14px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
           (p.requires_return ? '<span style="font-size:13.5px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
         '</div>' +
+        '<div class="kv"><span class="k">วันที่นำของออก</span><span>' + escapeHtml(p.removal_date || "-") + '</span></div>' +
         '<div class="kv"><span class="k">ปลายทาง</span><span>' + escapeHtml(p.destination || "-") + '</span></div>' +
         (canEditVehicle ?
           '<div class="kv" style="align-items:center;"><span class="k">ทะเบียนรถ</span>' +
@@ -1880,7 +1885,7 @@ function exportCsv() {
   }
   const headers = ["Pass No", "Requester", "Department", "Purpose", "Status", "Due Date", "Created At"];
   const rows = list.map(p => [
-    p.pass_no, p.requester_name, deptNameById(p.requester_dept), p.purpose_en, STATUS_LABEL[p.status] || p.status, p.due_date || "", fmtDate(p.created_at)
+    p.pass_no, p.requester_name, deptNameById(p.requester_dept), p.purpose_en, getStatusDisplay(p).text, p.due_date || "", fmtDate(p.created_at)
   ]);
   let csv = headers.join(",") + "\n" + rows.map(r => r.map(v => '"' + String(v || "").replace(/"/g, '""') + '"').join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
