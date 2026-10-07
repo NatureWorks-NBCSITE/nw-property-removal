@@ -318,6 +318,47 @@ const I18N_DICT = {
 "ยกเลิกคำขอ": "Cancel request",
 "ไม่ต้องอนุมัติ": "Not required"
 };
+const I18N_TH = {
+"All / ทั้งหมด": "ทั้งหมด",
+"แผนกของฉัน / My Department": "แผนกของฉัน",
+"Pending Approval / รอฉัน (ผจก.)": "รอฉัน (ผจก.)",
+"My Approval / รออนุมัติ": "รออนุมัติ",
+"Security Check / รปภ.": "รปภ. ตรวจสอบ",
+"All / ทุกสถานะ": "ทุกสถานะ",
+"+ New Request / สร้างคำขอ": "+ สร้างคำขอ",
+"ไม่พบรายการ / No passes found": "ไม่พบรายการ",
+"ข้อมูลผู้ขอ / Requester Information": "ข้อมูลผู้ขอ",
+"รายละเอียดการนำออก / Removal Details": "รายละเอียดการนำออก",
+"รายการของ / Items": "รายการของ",
+"ส่งคำขอ / Submit": "ส่งคำขอ",
+"ยกเลิก / Cancel": "ยกเลิก",
+"✔ อนุมัติ / Approve": "✔ อนุมัติ",
+"✕ ปฏิเสธ / Reject": "✕ ปฏิเสธ",
+"📩 แจ้งนำของกลับ / Notify Return": "📩 แจ้งนำของกลับ",
+"ไม่มีของที่ต้องนำกลับ / Nothing pending return": "ไม่มีของที่ต้องนำกลับ",
+"Plant Property Removal / ระบบใบนำของออก": "ระบบใบนำของออก",
+"📋 Removal Passes / ใบนำของออก": "📋 ใบนำของออก",
+"➕ New Request / สร้างคำขอ": "➕ สร้างคำขอ",
+"🔄 Tracking / ติดตาม": "🔄 ติดตาม",
+"📊 Dashboard / แดชบอร์ด": "📊 แดชบอร์ด",
+"⚙️ Admin / ตั้งค่า": "⚙️ ตั้งค่า",
+"ปิด / Close": "ปิด",
+"Security / รปภ.": "รปภ.",
+"ผู้ขอทั่วไป (Requester)": "ผู้ขอทั่วไป",
+"อนุมัติโดย/Approved by": "อนุมัติโดย",
+"ไม่ต้องอนุมัติ (Not required)": "ไม่ต้องอนุมัติ",
+"กำหนดวันนำกลับ (Due date)": "กำหนดวันนำกลับ",
+"รายการที่ Items": "รายการที่",
+" · Due: ": " · กำหนดคืน: ",
+"Overdue": "เกินกำหนดคืน",
+"Search by pass no. / name / dept...": "ค้นหาเลขที่ / ชื่อ / แผนก...",
+"⬇ Export CSV": "⬇ ส่งออก CSV",
+"⬇ Download": "⬇ ดาวน์โหลด",
+"Test Admin": "ผู้ดูแลระบบ (ทดสอบ)",
+"Admin / Safety": "ผู้ดูแล / Safety",
+"Department Manager": "ผู้จัดการแผนก",
+"Change Password": "เปลี่ยนรหัสผ่าน"
+};
 const I18N = (function () {
   let lang = "th";
   try { lang = localStorage.getItem("ppr_lang") === "en" ? "en" : "th"; } catch (e) {}
@@ -325,19 +366,22 @@ const I18N = (function () {
   const MONTHS = { "ม.ค.": "Jan", "ก.พ.": "Feb", "มี.ค.": "Mar", "เม.ย.": "Apr", "พ.ค.": "May", "มิ.ย.": "Jun", "ก.ค.": "Jul", "ส.ค.": "Aug", "ก.ย.": "Sep", "ต.ค.": "Oct", "พ.ย.": "Nov", "ธ.ค.": "Dec" };
   const THAI = /[\u0E00-\u0E7F]/;
   const dateRx = /(\d{1,2})\s+(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s+(\d{4})(\s+\d{1,2}:\d{2})?(\s*น\.)?/g;
+  let rxTh = null, mapTh = null;
   function build() {
     const m = Object.assign({}, I18N_DICT);
+    const t = Object.assign({}, I18N_TH);
     if (typeof REMOVAL_TYPES !== "undefined") {
-      REMOVAL_TYPES.forEach(r => { m[r.th + "/" + r.en] = r.en; m[r.th + " / " + r.en] = r.en; });
+      REMOVAL_TYPES.forEach(r => { m[r.th + "/" + r.en] = r.en; m[r.th + " / " + r.en] = r.en; t[r.th + "/" + r.en] = r.th; t[r.th + " / " + r.en] = r.th; });
     }
-    const keys = Object.keys(m).sort((a, b) => b.length - a.length);
-    map = m;
-    rx = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+    const mk = o => { const keys = Object.keys(o).sort((a, b) => b.length - a.length); return new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g"); };
+    map = m; rx = mk(m); mapTh = t; rxTh = mk(t);
     builtFor = typeof REMOVAL_TYPES !== "undefined" ? 1 : 0;
   }
   function tr(str) {
-    if (lang !== "en" || !str || !THAI.test(str)) return str;
+    if (!str) return str;
     if (!rx || (builtFor === 0 && typeof REMOVAL_TYPES !== "undefined")) build();
+    if (lang === "th") return str.replace(rxTh, k => mapTh[k]);
+    if (!THAI.test(str)) return str;
     let out = str.replace(dateRx, (_, d, mo, y, t) => {
       const yr = parseInt(y, 10); const g = yr > 2400 ? yr - 543 : yr;
       return d + " " + MONTHS[mo] + " " + g + (t || "");
@@ -353,14 +397,9 @@ const I18N = (function () {
     let r = textRec.get(n);
     if (r && n.data !== r.out) r = null;                // changed from outside -> new original
     const orig = r ? r.orig : n.data;
-    if (lang === "en") {
-      const out = tr(orig);
-      if (out !== n.data) { n.data = out; }
-      if (out !== orig || r) textRec.set(n, { orig, out });
-    } else if (r) {
-      if (n.data !== r.orig) n.data = r.orig;
-      textRec.delete(n);
-    }
+    const out = tr(orig);
+    if (out !== n.data) n.data = out;
+    if (out !== orig) textRec.set(n, { orig, out }); else if (r) textRec.delete(n);
   }
   function doAttrs(el) {
     let rec = attrRec.get(el);
@@ -369,13 +408,10 @@ const I18N = (function () {
       const cur = el.getAttribute(a);
       const r = rec && rec[a] && rec[a].out === cur ? rec[a] : null;
       const orig = r ? r.orig : cur;
-      if (lang === "en") {
-        const out = tr(orig);
-        if (out !== cur) el.setAttribute(a, out);
-        if (out !== orig) { rec = rec || {}; rec[a] = { orig, out }; attrRec.set(el, rec); }
-      } else if (r) {
-        el.setAttribute(a, r.orig); delete rec[a];
-      }
+      const out = tr(orig);
+      if (out !== cur) el.setAttribute(a, out);
+      if (out !== orig) { rec = rec || {}; rec[a] = { orig, out }; attrRec.set(el, rec); }
+      else if (rec && rec[a]) delete rec[a];
     });
   }
   function walk(root) {
@@ -1112,12 +1148,12 @@ function renderPassesView() {
   let html = "";
   if (roles.includes("requester") && !currentProfile.department) {
     html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
-      '<span style="font-size:12.5px;color:var(--text);">ยังไม่ได้ตั้งแผนกของคุณ — ตั้งไว้เพื่อดูใบคำขอของแผนกตัวเองได้:</span>' +
-      '<select id="myDeptSelect" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">' +
+      '<span style="font-size:14px;color:var(--text);">ยังไม่ได้ตั้งแผนกของคุณ — ตั้งไว้เพื่อดูใบคำขอของแผนกตัวเองได้:</span>' +
+      '<select id="myDeptSelect" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">' +
         '<option value="">เลือกแผนก</option>' +
         DEPARTMENTS.map(d => '<option value="' + d.id + '">' + d.name_th + '</option>').join("") +
       '</select>' +
-      '<button class="btnGhost" style="padding:6px 14px;font-size:12.5px;" onclick="saveMyDepartment()">บันทึก</button>' +
+      '<button class="btnGhost" style="padding:6px 14px;font-size:14px;" onclick="saveMyDepartment()">บันทึก</button>' +
     '</div>';
   }
   html += '<div class="subtabs">';
@@ -1224,8 +1260,8 @@ function renderNewRequestView() {
       '<div class="field" id="otherReturnWrap" style="margin-top:14px;display:none;">' +
         '<label>ต้องนำกลับหรือไม่ *</label>' +
         '<div style="display:flex;gap:20px;margin-top:8px;">' +
-          '<label style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="yes" onchange="onOtherReturnChoiceChange()"> ต้องนำกลับ</label>' +
-          '<label style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="no" onchange="onOtherReturnChoiceChange()"> ไม่ต้องนำกลับ</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="yes" onchange="onOtherReturnChoiceChange()"> ต้องนำกลับ</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:400;color:var(--text);cursor:pointer;"><input type="radio" name="otherReturnChoice" value="no" onchange="onOtherReturnChoiceChange()"> ไม่ต้องนำกลับ</label>' +
         '</div>' +
       '</div>' +
       '<div class="field" id="dueDateWrap" style="margin-top:14px;display:none;">' +
@@ -1242,7 +1278,7 @@ function renderNewRequestView() {
     '</div>' +
 
     '<div class="formCard">' +
-      '<h3>รายการของ / Items <span style="font-weight:400;color:var(--muted);font-size:13px;">— ต้องแนบรูปถ่ายของทุกรายการ *</span></h3>' +
+      '<h3>รายการของ / Items <span style="font-weight:400;color:var(--muted);font-size:14.5px;">— ต้องแนบรูปถ่ายของทุกรายการ *</span></h3>' +
       '<div id="itemsContainer"></div>' +
       '<button class="addItemBtn" onclick="addItemRow()">+ เพิ่มรายการ</button>' +
     '</div>' +
@@ -1498,7 +1534,7 @@ function openPassDetail(id) {
     // requester-side extension option is also offered if the same account also qualifies).
     if (canSecurityOut) {
       blocks.push(
-        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
         '<div class="formActions"><button class="btnSuccess" id="btnSecOut" onclick="confirmSecurityOut(\'' + p.id + '\')">✔ ยืนยันตรวจของ & ออกแล้ว</button></div>' +
         '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
@@ -1509,19 +1545,19 @@ function openPassDetail(id) {
     }
     if (canSelfCheckReturn) {
       blocks.push(
-        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
-        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
+        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
+        '<div style="font-size:15.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" onclick="submitSelfCheckReturn(\'' + p.id + '\')">✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.</button></div>'
       );
     }
     if (canConfirmReturn) {
       blocks.push(
-        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">🔍 ตรวจสอบของที่นำกลับ</div>' +
-        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับ: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
-        (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:13px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
-        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">🔍 ตรวจสอบของที่นำกลับ</div>' +
+        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับ: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
+        (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:14.5px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
+        '<div style="font-size:15.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
       '<div class="formActions"><button class="btnSuccess" id="btnConfirmReturn" onclick="confirmReturn(\'' + p.id + '\')">✔ ยืนยันคืนของแล้ว</button></div>' +
       '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
@@ -1532,8 +1568,8 @@ function openPassDetail(id) {
     }
     if (canApproveReturnL1) {
       blocks.push(
-        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
-        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
+        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้ตรวจใหม่)</label><input type="text" id="rejReturnL1Reason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
           '<button class="btnSuccess" onclick="approveReturnL1(\'' + p.id + '\')">✔ รับทราบ & ส่งต่อ Safety Department Head</button>' +
@@ -1543,8 +1579,8 @@ function openPassDetail(id) {
     }
     if (canApproveReturnEhs) {
       blocks.push(
-        '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (Safety Department Head) — ขั้นตอนสุดท้าย</div>' +
-        '<div style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">✅ อนุมัติปิดคำขอ (Safety Department Head) — ขั้นตอนสุดท้าย</div>' +
+        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้พิจารณาใหม่)</label><input type="text" id="rejReturnEhsReason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
           '<button class="btnSuccess" onclick="approveReturnEhs(\'' + p.id + '\')">✔ อนุมัติปิดคำขอ</button>' +
@@ -1564,7 +1600,7 @@ function openPassDetail(id) {
     if (canRequestExtension) {
       blocks.push(
         '<div>' +
-          '<div style="font-size:13.5px;color:var(--muted);margin-bottom:8px;">นำของกลับตามกำหนดไม่ได้? ขอขยายเวลาได้ (ใช้แล้ว ' + (p.ext_count || 0) + '/3 ครั้ง)</div>' +
+          '<div style="font-size:15px;color:var(--muted);margin-bottom:8px;">นำของกลับตามกำหนดไม่ได้? ขอขยายเวลาได้ (ใช้แล้ว ' + (p.ext_count || 0) + '/3 ครั้ง)</div>' +
           '<div class="field"><label>วันที่กำหนดคืนใหม่ที่ต้องการ *</label><input type="date" id="extNewDate"></div>' +
           '<div class="field"><label>เหตุผล *</label><input type="text" id="extReason" placeholder="เหตุผลที่ขอขยายเวลา"></div>' +
           '<div class="formActions"><button class="btnGhost" onclick="submitExtensionRequest(\'' + p.id + '\')">⏳ ขอขยายเวลานำกลับ</button></div>' +
@@ -1574,7 +1610,7 @@ function openPassDetail(id) {
   }
   if (canCancelRequest) {
     blocks.push(
-      '<div style="font-size:13.5px;color:var(--muted);margin-bottom:8px;">เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)</div>' +
+      '<div style="font-size:15px;color:var(--muted);margin-bottom:8px;">เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)</div>' +
       '<div class="formActions"><button class="btnDanger" onclick="cancelRequest(\'' + p.id + '\')">🗑️ ยกเลิกคำขอ</button></div>'
     );
   }
@@ -1588,7 +1624,7 @@ function openPassDetail(id) {
         urls.map(url => '<img src="' + url + '" onclick="openLightbox(\'' + url + '\')">').join("") +
       '</div>' +
     '</div>';
-  }).join("") || '<div style="color:var(--muted);font-size:14px;">ไม่มีรายการ</div>';
+  }).join("") || '<div style="color:var(--muted);font-size:15.5px;">ไม่มีรายการ</div>';
 
   function stagePhotoHistoryHtml(label, itemPhotosArr, legacyUrl, atTs) {
     if (itemPhotosArr && itemPhotosArr.length && itemPhotosArr.some(ip => ip.photo_url)) {
@@ -1629,16 +1665,16 @@ function openPassDetail(id) {
         '<div class="kv"><span class="k">วัตถุประสงค์</span><span>' + escapeHtml(p.purpose_th) + ' / ' + escapeHtml(p.purpose_en) + '</span></div>' +
         (p.purpose_detail ? '<div class="kv"><span class="k">รายละเอียดเพิ่มเติม</span><span>' + escapeHtml(p.purpose_detail) + '</span></div>' : "") +
         '<div style="background:' + (p.requires_return ? "#FFF6E5" : "#E9F7EF") + ';border:1px solid ' + (p.requires_return ? "#F5DBA0" : "#B7EBC6") + ';border-radius:8px;padding:10px 12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">' +
-          '<span style="font-weight:700;font-size:14px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
-          (p.requires_return ? '<span style="font-size:13.5px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
+          '<span style="font-weight:700;font-size:15.5px;color:' + (p.requires_return ? "#8A6100" : "#1E7A3D") + ';">' + (p.requires_return ? "🔄 นำออกชั่วคราว · ต้องนำกลับ" : "✅ นำออกถาวร · ไม่ต้องนำกลับ") + '</span>' +
+          (p.requires_return ? '<span style="font-size:15px;color:#8A6100;">กำหนดคืน: <strong>' + escapeHtml(p.due_date || "ยังไม่ระบุ") + '</strong></span>' : "") +
         '</div>' +
         '<div class="kv"><span class="k">วันที่นำของออก</span><span>' + escapeHtml(p.removal_date || "-") + '</span></div>' +
         '<div class="kv"><span class="k">ปลายทาง</span><span>' + escapeHtml(p.destination || "-") + '</span></div>' +
         (canEditVehicle ?
           '<div class="kv" style="align-items:center;"><span class="k">ทะเบียนรถ</span>' +
             '<span style="display:flex;gap:6px;align-items:center;">' +
-              '<input type="text" id="vehiclePlateEdit_' + p.id + '" value="' + escapeHtml(p.vehicle_plate || "") + '" placeholder="ระบุทะเบียนรถ" style="width:120px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">' +
-              '<button class="btnGhost" style="padding:5px 10px;font-size:11.5px;" onclick="saveVehiclePlate(\'' + p.id + '\')">บันทึก</button>' +
+              '<input type="text" id="vehiclePlateEdit_' + p.id + '" value="' + escapeHtml(p.vehicle_plate || "") + '" placeholder="ระบุทะเบียนรถ" style="width:120px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;">' +
+              '<button class="btnGhost" style="padding:5px 10px;font-size:12.5px;" onclick="saveVehiclePlate(\'' + p.id + '\')">บันทึก</button>' +
             '</span></div>' :
           '<div class="kv"><span class="k">ทะเบียนรถ</span><span>' + escapeHtml(p.vehicle_plate || "-") + '</span></div>') +
         '<div class="kv"><span class="k">มูลค่าสินค้า (โดยประมาณ)</span><span>' + fmtMoney(p.item_value, p.item_value_currency) + '</span></div>' +
@@ -1685,7 +1721,7 @@ function actionButtons(passId, stage) {
 
 function extensionApprovalPanel(p, stage) {
   return '<div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:12px;">' +
-    '<div style="font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:8px;">คำขอขยายเวลานำกลับ ครั้งที่ ' + ((p.ext_count || 0) + 1) + ' — ' + (stage === "l1" ? "รออนุมัติขั้น 1" : "รออนุมัติขั้น 2") + '</div>' +
+    '<div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:8px;">คำขอขยายเวลานำกลับ ครั้งที่ ' + ((p.ext_count || 0) + 1) + ' — ' + (stage === "l1" ? "รออนุมัติขั้น 1" : "รออนุมัติขั้น 2") + '</div>' +
     '<div class="kv"><span class="k">วันที่กำหนดเดิม</span><span>' + escapeHtml(p.due_date || "-") + '</span></div>' +
     '<div class="kv"><span class="k">วันที่ขอเปลี่ยนเป็น</span><span>' + escapeHtml(p.ext_requested_due_date || "-") + '</span></div>' +
     '<div class="kv"><span class="k">เหตุผล</span><span>' + escapeHtml(p.ext_reason || "-") + '</span></div>' +
@@ -2376,26 +2412,26 @@ function renderAdminView() {
   el.innerHTML =
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ผู้อนุมัติขั้น 1 ตามแผนก</h3>' +
-      '<p style="font-size:13.5px;color:var(--muted);margin-top:-6px;">แก้ไขชื่อ/Email แล้วกด Save ต่อแถว — มีผลทันทีตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น ไม่ต้องแก้ Code</p>' +
+      '<p style="font-size:15px;color:var(--muted);margin-top:-6px;">แก้ไขชื่อ/Email แล้วกด Save ต่อแถว — มีผลทันทีตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น ไม่ต้องแก้ Code</p>' +
       DEPARTMENTS.map(d => deptApproverRowHtml(d)).join("") +
     '</div>' +
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ผู้อนุมัติขั้น 2</h3>' +
-      '<p style="font-size:13.5px;color:var(--muted);margin-top:-6px;">รายชื่อที่ผู้ขอเลือกได้ตอนสร้างคำขอ — เพิ่ม/แก้ไข/ลบได้อิสระ</p>' +
+      '<p style="font-size:15px;color:var(--muted);margin-top:-6px;">รายชื่อที่ผู้ขอเลือกได้ตอนสร้างคำขอ — เพิ่ม/แก้ไข/ลบได้อิสระ</p>' +
       '<div id="l2ApproverList">' + L2_APPROVERS.map(a => l2ApproverRowHtml(a.email, a.name, a.email, false, a.order)).join("") + '</div>' +
       '<div id="l2ApproverDrafts">' + l2ApproverDraftRows.map(r => l2ApproverRowHtml(r.tempId, r.name, r.email, true)).join("") + '</div>' +
       '<button class="addItemBtn" onclick="addL2ApproverRow()">+ เพิ่มผู้อนุมัติขั้น 2</button>' +
     '</div>' +
     '<div class="formCard">' +
       '<h3 style="margin-top:0;">ข้อมูลอ้างอิงอื่นๆ (Read-only)</h3>' +
-      '<p style="font-size:13.5px;color:var(--muted);">ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js</p>' +
+      '<p style="font-size:15px;color:var(--muted);">ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js</p>' +
     '</div>';
 }
 
 function deptApproverRowHtml(d) {
   const rowId = "dept_" + d.id;
   return '<div style="display:grid;grid-template-columns:1.2fr 1.3fr 1.6fr auto;gap:8px;align-items:end;padding:10px 0;border-bottom:1px solid var(--border);">' +
-    '<div style="font-size:14px;font-weight:600;color:var(--navy);padding-bottom:9px;">' + escapeHtml(d.name_th) + '</div>' +
+    '<div style="font-size:15.5px;font-weight:600;color:var(--navy);padding-bottom:9px;">' + escapeHtml(d.name_th) + '</div>' +
     '<div class="field" style="margin:0;"><label>ชื่อผู้อนุมัติ</label><input type="text" id="' + rowId + '_name" value="' + escapeHtml(d.l1_name) + '"></div>' +
     '<div class="field" style="margin:0;"><label>Email</label><input type="email" id="' + rowId + '_email" value="' + escapeHtml(d.l1_email) + '"></div>' +
     '<button class="btnGhost" style="padding:9px 14px;" onclick="saveDeptApprover(\'' + d.id + '\')">Save</button>' +
