@@ -187,6 +187,15 @@ main{flex:1;padding:20px 24px 60px;max-width:1080px;width:100%;margin:0 auto;}
 .loadingSpin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px;margin-right:6px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .pageLoader{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--muted);font-size:15px;}
+.langSwitch{display:inline-flex;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;vertical-align:middle;}
+.langSwitch button{background:none;border:none;padding:3px 11px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;}
+.langSwitch button.active{background:var(--navy);color:#fff;}
+.loginLogo .langSwitch{margin-left:auto;}
+.userbox .langRow{margin-bottom:4px;}
+.userbox .langSwitch button{color:var(--muted);padding:3px 11px;font-size:13px;}
+.userbox .langSwitch button.active{color:#fff;}
+.devBy{font-size:12.5px;color:var(--teal-dark);font-weight:600;margin-top:1px;}
+.loginCard .devBy{text-align:center;margin-top:18px;font-size:13px;}
 </style>
 </head>
 <body>
@@ -194,7 +203,7 @@ main{flex:1;padding:20px 24px 60px;max-width:1080px;width:100%;margin:0 auto;}
 <!-- ============ LOGIN SCREEN ============ -->
 <div id="loginScreen">
   <div class="loginCard">
-    <div class="loginLogo"><div class="dot"></div><span>NatureWorks</span></div>
+    <div class="loginLogo"><div class="dot"></div><span>NatureWorks</span><span class="langSwitch" title="Language"><button type="button" data-lang="th" onclick="setLang('th')">TH</button><button type="button" data-lang="en" onclick="setLang('en')">EN</button></span></div>
     <h1 id="authTitle">เข้าสู่ระบบ</h1>
     <div class="sub">Plant Property Removal / ระบบใบนำของออก</div>
     <div id="authMsg" class="authMsg hidden"></div>
@@ -230,6 +239,7 @@ main{flex:1;padding:20px 24px 60px;max-width:1080px;width:100%;margin:0 auto;}
         <button class="linkBtn" onclick="toggleAuthMode('login')">กลับไปหน้าเข้าสู่ระบบ</button>
       </div>
     </div>
+    <div class="devBy">Developed by: Kannikar Thaicharoen · v4.8</div>
   </div>
 </div>
 
@@ -239,14 +249,16 @@ main{flex:1;padding:20px 24px 60px;max-width:1080px;width:100%;margin:0 auto;}
     <div class="brand">
       <div class="logoStack">
         <div class="dot"></div>
-        <div class="versionBadge">v4.7</div>
+        <div class="versionBadge">v4.8</div>
       </div>
       <div class="brand-text">
         <h1>Plant Property Removal</h1>
         <div class="th">ระบบใบนำของออก</div>
+        <div class="devBy">Developed by: Kannikar Thaicharoen</div>
       </div>
     </div>
     <div class="userbox">
+      <div class="langRow"><span class="langSwitch" title="Language"><button type="button" data-lang="th" onclick="setLang('th')">TH</button><button type="button" data-lang="en" onclick="setLang('en')">EN</button></span></div>
       <div class="name" id="ubName">-</div>
       <div class="role" id="ubRole">-</div>
       <button class="changePwBtn" onclick="openChangePasswordModal()">เปลี่ยนรหัสผ่าน</button>

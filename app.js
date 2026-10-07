@@ -3,6 +3,437 @@
    Firebase Firestore + Auth + Cloudinary
    ========================================================= */
 
+// ===================== i18n (TH / EN) =====================
+// Thai is the original language of every screen. In EN mode the visible text is translated
+// in place (text nodes + placeholder/title), and restored when switching back to TH.
+const I18N_DICT = {
+"ซ่อม": "Repair",
+"สอบเทียบ": "Calibration",
+"ทำความสะอาด": "Cleaning",
+"บำรุงรักษาเชิงป้องกัน (PM)": "Preventive Maintenance (PM)",
+"เติมน้ำยาถังดับเพลิง": "Refill Fire Extinguisher",
+"คืนผู้ให้บริการ": "Return to Vendor",
+"ทดสอบภายนอก": "External Testing",
+"ขายออก": "Sale",
+"ส่งกำจัดขยะติดเชื้อจากห้องพยาบาล": "Infectious Waste Disposal (Medical Room)",
+"อื่นๆ": "Other",
+"ชิ้น": "pcs",
+"กล่อง": "box",
+"ม้วน": "roll",
+"เครื่อง": "unit",
+"ใบ": "sheet",
+"ชุด": "set",
+"อัน": "piece",
+"กก.": "kg",
+"รปภ. (Guardhouse)": "Security (Guardhouse)",
+"ของไม่ตรงกับรายการที่ขออนุมัติ": "Items do not match the approved request",
+"จำนวนของไม่ครบตามที่ระบุ": "Quantity is less than stated",
+"ไม่มีใบอนุมัติ/เอกสารครบถ้วน": "No approval / incomplete documents",
+"สภาพของผิดปกติ/ต้องสงสัย": "Abnormal / suspicious condition",
+"อื่นๆ โปรดระบุ": "Other (please specify)",
+"ของไม่ครบตามรายการที่นำออกไป": "Items incomplete versus the removal list",
+"สภาพของเสียหาย/ผิดปกติ": "Items damaged / abnormal",
+"นำของกลับมาผิดชิ้น/ผิดประเภท": "Wrong item / wrong type returned",
+"รออนุมัติ (ขั้น 1)": "Pending Approval (Level 1)",
+"รออนุมัติ (ขั้น 2)": "Pending Approval (Level 2)",
+"อนุมัติ": "Approved",
+"ออกแล้ว": "Issued",
+"รอผู้ขอตรวจสอบของนำเข้า": "Waiting for requester to inspect returned items",
+"รอ รปภ./Safety ตรวจสอบของนำเข้า": "Waiting for Security/Safety to inspect returned items",
+"รอผจก.แผนกอนุมัติปิดคำขอ": "Waiting for Dept. Manager to approve closing",
+"รอ Safety Department Head ปิดคำขอ": "Waiting for Safety Department Head to close",
+"ปิดคำขอแล้ว (คืนของเรียบร้อย)": "Closed (items returned)",
+"ปฏิเสธ": "Rejected",
+"ยกเลิกโดยผู้ขอ": "Cancelled by requester",
+"สมัครใช้งาน": "Sign Up",
+"ลืมรหัสผ่าน": "Forgot Password",
+"เข้าสู่ระบบ": "Log In",
+"กรุณากรอกชื่อ-นามสกุล": "Please enter your full name",
+"กรุณากรอก Email": "Please enter your Email",
+"กำลังแจ้ง...": "Notifying...",
+"แจ้งทีม Safety Department แล้ว กรุณารอการติดต่อกลับเพื่อรีเซ็ตบัญชี จากนั้นกลับมาสมัครใช้งานใหม่ด้วย Email เดิม": "The Safety Department team has been notified. Please wait for them to reset your account, then sign up again with the same Email.",
+"เกิดข้อผิดพลาด:": "An error occurred:",
+"แจ้งทีม Safety ให้รีเซ็ตบัญชี": "Ask Safety team to reset my account",
+"กรอก Email และ Password ให้ครบ": "Please enter both Email and Password",
+"กำลังเข้าสู่ระบบ...": "Logging in...",
+"กรอกข้อมูลให้ครบ": "Please fill in all fields",
+"กรุณาใช้ Email บริษัท (@natureworkspla.com หรือ @natureworksco.com)": "Please use a company Email (@natureworkspla.com or @natureworksco.com)",
+"Password ต้องมีอย่างน้อย 6 ตัวอักษร": "Password must be at least 6 characters",
+"กำลังสมัคร...": "Signing up...",
+"กรุณาเลือกแผนก": "Please select a department",
+"บันทึกแผนกแล้ว": "Department saved",
+"เลือกแผนก": "Select department",
+"Email นี้ถูกใช้สมัครแล้ว กรุณาเข้าสู่ระบบแทน": "This Email is already registered. Please log in instead.",
+"Email หรือ Password ไม่ถูกต้อง": "Incorrect Email or Password",
+"ไม่พบบัญชีนี้ กรุณาสมัครใช้งานก่อน": "Account not found. Please sign up first.",
+"รูปแบบ Email ไม่ถูกต้อง": "Invalid Email format",
+"Password ควรมีอย่างน้อย 6 ตัวอักษร": "Password should be at least 6 characters",
+"เปลี่ยนรหัสผ่าน": "Change Password",
+"รหัสผ่านปัจจุบัน": "Current password",
+"รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)": "New password (at least 6 characters)",
+"ยืนยันรหัสผ่านใหม่": "Confirm new password",
+"บันทึกรหัสผ่านใหม่": "Save new password",
+"ยกเลิก": "Cancel",
+"กรุณากรอกข้อมูลให้ครบ": "Please fill in all fields",
+"รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร": "New password must be at least 6 characters",
+"รหัสผ่านใหม่และการยืนยันไม่ตรงกัน": "New password and confirmation do not match",
+"กำลังบันทึก...": "Saving...",
+"เปลี่ยนรหัสผ่านสำเร็จ": "Password changed successfully",
+"ผู้อนุมัติขั้น 2": "Level-2 Approver",
+"Security / รปภ.": "Security",
+"ผู้ขอทั่วไป (Requester)": "Requester",
+"โหลดข้อมูลไม่สำเร็จ:": "Failed to load data:",
+"เหตุผล (กรณีปฏิเสธ) *": "Reason (if rejecting) *",
+"เลือกเหตุผล": "Select a reason",
+"โปรดระบุ *": "Please specify *",
+"ระบุเหตุผลเพิ่มเติม...": "Add further details...",
+"กรุณาเลือกเหตุผลในการปฏิเสธ": "Please select a rejection reason",
+"กรุณาระบุเหตุผลเพิ่มเติม": "Please add further details",
+"อื่นๆ:": "Other:",
+"All / ทั้งหมด": "All",
+"แผนกของฉัน / My Department": "My Department",
+"Pending Approval / รอฉัน (ผจก.)": "Pending Approval (Manager)",
+"My Approval / รออนุมัติ": "My Approval",
+"Security Check / รปภ.": "Security Check",
+"ยังไม่ได้ตั้งแผนกของคุณ — ตั้งไว้เพื่อดูใบคำขอของแผนกตัวเองได้:": "Your department is not set yet — set it to view your department's requests:",
+"บันทึก": "Save",
+"All / ทุกสถานะ": "All statuses",
+"+ New Request / สร้างคำขอ": "+ New Request",
+"ไม่พบรายการ / No passes found": "No passes found",
+"ออกแล้ว — คำขอถูกปิดแล้ว": "Issued — request closed",
+"ขอต่ออายุ ครั้งที่": "Extension request no.",
+"ข้อมูลผู้ขอ / Requester Information": "Requester Information",
+"แผนก *": "Department *",
+"ชื่อผู้ขอ *": "Requester name *",
+"ชื่อ-นามสกุล": "Full name",
+"เบอร์โทร": "Phone",
+"วัตถุประสงค์ในการนำออก *": "Purpose of removal *",
+"เลือกวัตถุประสงค์": "Select purpose",
+"รายละเอียดการนำออก / Removal Details": "Removal Details",
+"วันที่นำของออก *": "Removal date *",
+"ปลายทาง": "Destination",
+"สถานที่ปลายทาง": "Destination",
+"ทะเบียนรถ": "Vehicle plate",
+"ผู้อนุมัติขั้น 1 (อัตโนมัติตามแผนก)": "Level-1 approver (automatic by department)",
+"— เลือกแผนกก่อน —": "— Select a department first —",
+"ผู้อนุมัติขั้น 2 *": "Level-2 approver *",
+"เลือกผู้อนุมัติขั้น 2": "Select Level-2 approver",
+"ระบุรายละเอียดวัตถุประสงค์ *": "Specify purpose details *",
+"ระบุรายละเอียด...": "Specify details...",
+"ต้องนำกลับหรือไม่ *": "Must the items be returned? *",
+"ต้องนำกลับ": "Must be returned",
+"ไม่ต้องนำกลับ": "No return needed",
+"กำหนดวันนำกลับ (Due date)": "Return due date",
+"มูลค่าสินค้า (โดยประมาณ) *": "Estimated value *",
+"สกุลเงิน": "Currency",
+"หมายเหตุ": "Note",
+"หมายเหตุเพิ่มเติม...": "Additional notes...",
+"รายการของ / Items": "Items",
+"— ต้องแนบรูปถ่ายของทุกรายการ *": "— A photo is required for every item *",
+"+ เพิ่มรายการ": "+ Add item",
+"ส่งคำขอ / Submit": "Submit",
+"ยกเลิก / Cancel": "Cancel",
+"✕ ลบ": "✕ Delete",
+"รายการที่": "Item no.",
+"ชื่อของ *": "Item name *",
+"ชื่ออุปกรณ์/ของ": "Equipment / item name",
+"จำนวน": "Quantity",
+"หน่วย": "Unit",
+"เลือกหน่วย": "Select unit",
+"รูปถ่ายของ * (แนบได้หลายรูป เช่น ก่อนแพ็ค/หลังแพ็ค)": "Item photos * (multiple allowed, e.g. before/after packing)",
+"อัปโหลด...": "Uploading...",
+"เพิ่มรูป": "Add photo",
+"หมายเหตุรายการ": "Item note",
+"หมายเหตุ (ถ้ามี)": "Note (optional)",
+"อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง": "Photo upload failed, please try again",
+"อัปโหลดรูปไม่สำเร็จ": "Photo upload failed",
+"กรุณากรอกชื่อผู้ขอ": "Please enter requester name",
+"กรุณาเลือกวัตถุประสงค์": "Please select a purpose",
+"กรุณาระบุวันที่นำของออก": "Please specify the removal date",
+"กรุณาระบุรายละเอียดวัตถุประสงค์": "Please specify purpose details",
+"กรุณาเลือกว่าต้องนำกลับหรือไม่": "Please choose whether items must be returned",
+"กรุณาเลือกผู้อนุมัติขั้น 2": "Please select a Level-2 approver",
+"กรุณากรอกมูลค่าสินค้า": "Please enter the item value",
+"กรุณากรอกมูลค่าสินค้าเป็นตัวเลขที่ถูกต้อง": "Please enter a valid numeric item value",
+"กรุณาเพิ่มรายการของอย่างน้อย 1 รายการ": "Please add at least 1 item",
+"กรุณากรอกชื่อของให้ครบทุกรายการ": "Please enter a name for every item",
+"กรุณาแนบรูปถ่ายอย่างน้อย 1 รูปให้ครบทุกรายการ": "Please attach at least 1 photo for every item",
+"กรุณารอให้อัปโหลดรูปเสร็จก่อน": "Please wait until photo upload finishes",
+"กำลังส่งคำขอ...": "Submitting...",
+"ส่งคำขอสำเร็จ (": "Request submitted (",
+"ส่งคำขอไม่สำเร็จ:": "Failed to submit request:",
+"📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)": "📷 Take a confirmation photo for each item (compare with the removal photo)",
+"✔ ยืนยันตรวจของ & ออกแล้ว": "✔ Confirm inspection & release",
+"✕ ปฏิเสธ ไม่อนุญาตนำออก": "✕ Reject — removal not allowed",
+"📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)": "📦 Inspect returned items (before passing to Security)",
+"แจ้งนำกลับไว้:": "Return notified:",
+"เวลา": "time",
+"✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.": "✔ Inspected — pass to Security",
+"🔍 ตรวจสอบของที่นำกลับ": "🔍 Inspect returned items",
+"แจ้งนำกลับ:": "Return notified:",
+"ครั้งก่อนถูกปฏิเสธ:": "Previously rejected:",
+"✔ ยืนยันคืนของแล้ว": "✔ Confirm items returned",
+"✕ ปฏิเสธ ของไม่ครบ/มีปัญหา": "✕ Reject — items incomplete / problem",
+"📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)": "📋 Acknowledge & approve closing (Dept. Manager)",
+"รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ": "Security/Safety has inspected the items. Please acknowledge before it goes to the Safety Department Head for closing.",
+"เหตุผล (กรณีส่งกลับให้ตรวจใหม่)": "Reason (if sending back for re-inspection)",
+"✔ รับทราบ & ส่งต่อ Safety Department Head": "✔ Acknowledge & forward to Safety Department Head",
+"✕ ส่งกลับให้ตรวจใหม่": "✕ Send back for re-inspection",
+"✅ อนุมัติปิดคำขอ (Safety Department Head) — ขั้นตอนสุดท้าย": "✅ Approve closing (Safety Department Head) — final step",
+"ผจก.แผนกรับทราบแล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย": "The Dept. Manager has acknowledged. Please approve closing as the final step.",
+"เหตุผล (กรณีส่งกลับให้พิจารณาใหม่)": "Reason (if sending back for review)",
+"✔ อนุมัติปิดคำขอ": "✔ Approve closing",
+"✕ ส่งกลับให้พิจารณาใหม่": "✕ Send back for review",
+"วันที่จะนำของกลับ *": "Return date *",
+"เวลาโดยประมาณ *": "Estimated time *",
+"📩 แจ้งนำของกลับ / Notify Return": "📩 Notify Return",
+"นำของกลับตามกำหนดไม่ได้? ขอขยายเวลาได้ (ใช้แล้ว": "Can't return on time? You can request an extension (used",
+"/3 ครั้ง)": "/3 times)",
+"วันที่กำหนดคืนใหม่ที่ต้องการ *": "New requested return date *",
+"เหตุผล *": "Reason *",
+"เหตุผลที่ขอขยายเวลา": "Reason for extension",
+"⏳ ขอขยายเวลานำกลับ": "⏳ Request return extension",
+"เปลี่ยนใจ ไม่ต้องการนำของออกแล้ว? ยกเลิกคำขอนี้ได้ (ทำได้ก่อนของออกจากโรงงานเท่านั้น)": "Changed your mind? You can cancel this request (only before the items leave the plant).",
+"🗑️ ยกเลิกคำขอ": "🗑️ Cancel request",
+"ไม่มีรายการ": "No items",
+"รูปยืนยัน": "Confirmation photo",
+"รูปตอนออก (Security) — ทีละรายการ": "Release photos (Security) — per item",
+"รูปตอนผู้ขอตรวจสอบของนำเข้า — ทีละรายการ": "Requester's return-inspection photos — per item",
+"รูปตอนคืน (รปภ./Safety) — ทีละรายการ": "Return photos (Security/Safety) — per item",
+"ข้อมูลผู้ขอ": "Requester Information",
+"ชื่อผู้ขอ": "Requester name",
+"แผนก": "Department",
+"วัตถุประสงค์": "Purpose",
+"รายละเอียดเพิ่มเติม": "Additional details",
+"🔄 นำออกชั่วคราว · ต้องนำกลับ": "🔄 Temporary removal · must be returned",
+"✅ นำออกถาวร · ไม่ต้องนำกลับ": "✅ Permanent removal · no return needed",
+"กำหนดคืน:": "Return due:",
+"ยังไม่ระบุ": "Not specified",
+"วันที่นำของออก": "Removal date",
+"ระบุทะเบียนรถ": "Enter vehicle plate",
+"มูลค่าสินค้า (โดยประมาณ)": "Estimated value",
+"แจ้งนำกลับ": "Return notice",
+"ผู้อนุมัติ": "Approvers",
+"ขั้น 1": "Level 1",
+"อนุมัติโดย/Approved by": "Approved by",
+"(รอดำเนินการ)": "(pending)",
+"ขั้น 2": "Level 2",
+"ไม่ต้องอนุมัติ (Not required)": "Not required",
+"เหตุผลปฏิเสธ": "Rejection reason",
+"การขอขยายเวลานำกลับ": "Return extension",
+"ใช้สิทธิ์ขยายเวลาแล้ว": "Extensions used",
+"/ 3 ครั้ง": "/ 3 times",
+"สถานะคำขอล่าสุด": "Latest request status",
+"รออนุมัติ ขั้น 1": "Pending approval Level 1",
+"รออนุมัติ ขั้น 2": "Pending approval Level 2",
+"รออนุมัติ": "Pending approval",
+"— ขอเปลี่ยนเป็น": "— requested change to",
+"รายการของ (": "Items (",
+"เหตุผล (กรณีปฏิเสธ)": "Reason (if rejecting)",
+"ระบุเหตุผล...": "Specify reason...",
+"✔ อนุมัติ / Approve": "✔ Approve",
+"✕ ปฏิเสธ / Reject": "✕ Reject",
+"คำขอขยายเวลานำกลับ ครั้งที่": "Return extension request no.",
+"รออนุมัติขั้น 1": "Pending Level-1 approval",
+"รออนุมัติขั้น 2": "Pending Level-2 approval",
+"วันที่กำหนดเดิม": "Original due date",
+"วันที่ขอเปลี่ยนเป็น": "Requested new date",
+"เหตุผล": "Reason",
+"✔ อนุมัติการขยายเวลา": "✔ Approve extension",
+"✕ ปฏิเสธ": "✕ Reject",
+"บันทึกทะเบียนรถแล้ว": "Vehicle plate saved",
+"ยืนยันยกเลิกคำขอนี้? การยกเลิกไม่สามารถย้อนกลับได้": "Cancel this request? This cannot be undone.",
+"ยกเลิกคำขอแล้ว": "Request cancelled",
+"กรุณาระบุวันที่กำหนดคืนใหม่ที่ต้องการ": "Please specify the new return date",
+"กรุณาระบุเหตุผลที่ขอขยายเวลา": "Please specify the reason for the extension",
+"ส่งคำขอขยายเวลาแล้ว รอผู้อนุมัติขั้น 1": "Extension request sent — waiting for Level-1 approver",
+"อนุมัติขั้น 1 แล้ว รอผู้อนุมัติขั้น 2": "Level 1 approved — waiting for Level-2 approver",
+"อนุมัติการขยายเวลาสำเร็จ (ครั้งที่": "Extension approved (no.",
+"กรุณาระบุเหตุผลในการปฏิเสธ": "Please specify the rejection reason",
+"ปฏิเสธคำขอขยายเวลาแล้ว": "Extension request rejected",
+"อนุมัติสำเร็จ": "Approved successfully",
+"ปฏิเสธคำขอแล้ว": "Request rejected",
+"ตอนนำออก": "At removal",
+"ไม่มีรูป": "No photo",
+"ยืนยันตอนนี้ *": "Confirm now *",
+"กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ": "Please take a confirmation photo for every item",
+"ยืนยันตรวจของและออกแล้ว": "Inspection confirmed and released",
+"ปฏิเสธการนำของออกแล้ว": "Removal rejected",
+"กรุณาระบุวันที่และเวลาที่จะนำของกลับ": "Please specify the return date and time",
+"แจ้งนำของกลับสำเร็จ เมื่อของถึงแล้วกลับมาตรวจสอบ+แนบรูปในระบบอีกครั้ง": "Return notified. When the items arrive, come back to inspect and attach photos.",
+"ยืนยันตรวจสอบของนำเข้าแล้ว ส่งต่อให้ รปภ./Safety ตรวจสอบ": "Return inspection confirmed — passed to Security/Safety",
+"ยืนยันตรวจของแล้ว ส่งต่อให้ผจก.แผนกรับทราบและปิดคำขอ": "Inspection confirmed — passed to Dept. Manager",
+"รับทราบแล้ว ส่งต่อให้ Safety Department Head ปิดคำขอ": "Acknowledged — passed to Safety Department Head",
+"กรุณาระบุเหตุผล": "Please specify a reason",
+"ส่งกลับให้ รปภ./Safety ตรวจสอบใหม่แล้ว": "Sent back to Security/Safety for re-inspection",
+"ปิดคำขอสมบูรณ์": "Request closed",
+"ส่งกลับให้ผจก.แผนกพิจารณาใหม่แล้ว": "Sent back to Dept. Manager for review",
+"บันทึกการปฏิเสธการรับคืนแล้ว": "Return rejection saved",
+"ยังไม่แจ้งคืน": "Not yet notified",
+"กำลังปิดคำขอ": "Closing in progress",
+"คืนแล้ว": "Returned",
+"ไม่มีของที่ต้องนำกลับ / Nothing pending return": "Nothing pending return",
+"ทั้งหมด": "Total",
+"ตามสถานะ": "By status",
+"ตามแผนก": "By department",
+"ผู้อนุมัติขั้น 1 ตามแผนก": "Level-1 approver by department",
+"แก้ไขชื่อ/Email แล้วกด Save ต่อแถว — มีผลทันทีตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น ไม่ต้องแก้ Code": "Edit name/Email then press Save on each row — takes effect from that person's next login. No code change needed.",
+"รายชื่อที่ผู้ขอเลือกได้ตอนสร้างคำขอ — เพิ่ม/แก้ไข/ลบได้อิสระ": "Approvers that requesters can choose when creating a request — add/edit/delete freely",
+"+ เพิ่มผู้อนุมัติขั้น 2": "+ Add Level-2 approver",
+"ข้อมูลอ้างอิงอื่นๆ (Read-only)": "Other reference data (read-only)",
+"ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js": "Removal types, units and department list are defined inside the app. To add/remove departments or removal types, ask the Developer to edit app.js.",
+"ชื่อผู้อนุมัติ": "Approver name",
+"ลำดับ": "Order",
+"ชื่อ": "Name",
+"ลบ": "Delete",
+"กรุณากรอกชื่อและ Email ให้ครบ": "Please enter both name and Email",
+"บันทึกผู้อนุมัติขั้น 1 ของแผนกนี้แล้ว": "Level-1 approver for this department saved",
+"ลำดับต้องเป็นตัวเลข": "Order must be a number",
+"บันทึกผู้อนุมัติขั้น 2 แล้ว": "Level-2 approver saved",
+"ต้องมีผู้อนุมัติขั้น 2 อย่างน้อย 1 คน": "At least 1 Level-2 approver is required",
+"ยืนยันลบผู้อนุมัติขั้น 2 คนนี้?": "Delete this Level-2 approver?",
+"ลบแล้ว": "Deleted",
+"Plant Property Removal / ระบบใบนำของออก": "Plant Property Removal Request",
+"ยังไม่มีบัญชี? สมัครใช้งาน": "No account yet? Sign up",
+"ลืมรหัสผ่าน?": "Forgot password?",
+"Email บริษัท": "Company Email",
+"Password (อย่างน้อย 6 ตัวอักษร)": "Password (at least 6 characters)",
+"มีบัญชีแล้ว? เข้าสู่ระบบ": "Already have an account? Log in",
+"ระบบจะแจ้งทีม Safety Department ให้ช่วยรีเซ็ตบัญชีให้ทาง Email": "The system will notify the Safety Department team to reset your account by Email",
+"Email ที่ใช้สมัครไว้": "Email used to sign up",
+"ทีม Safety จะรีเซ็ตบัญชีให้ จากนั้นกลับมาสมัครใช้งานใหม่ด้วย Email เดิม — ประวัติคำขอและสิทธิ์การใช้งานเดิมจะไม่หายไปไหน เพราะผูกกับ Email ไม่ใช่ตัวบัญชี": "The Safety team will reset your account, then sign up again with the same Email — your request history and permissions are kept because they are tied to your Email, not the account.",
+"กลับไปหน้าเข้าสู่ระบบ": "Back to login",
+"ระบบใบนำของออก": "Removal Pass System",
+"ออกจากระบบ": "Log out",
+"📋 Removal Passes / ใบนำของออก": "📋 Removal Passes",
+"➕ New Request / สร้างคำขอ": "➕ New Request",
+"🔄 Tracking / ติดตาม": "🔄 Tracking",
+"📊 Dashboard / แดชบอร์ด": "📊 Dashboard",
+"⚙️ Admin / ตั้งค่า": "⚙️ Admin",
+"ปิด / Close": "Close",
+"ชื่อ นามสกุล": "First Last",
+"รปภ.": "Security",
+"ผจก.แผนก": "Dept. Manager",
+"ผจก.": "Manager",
+"ยกเลิกคำขอ": "Cancel request",
+"ไม่ต้องอนุมัติ": "Not required"
+};
+const I18N = (function () {
+  let lang = "th";
+  try { lang = localStorage.getItem("ppr_lang") === "en" ? "en" : "th"; } catch (e) {}
+  let rx = null, map = null, builtFor = -1;
+  const MONTHS = { "ม.ค.": "Jan", "ก.พ.": "Feb", "มี.ค.": "Mar", "เม.ย.": "Apr", "พ.ค.": "May", "มิ.ย.": "Jun", "ก.ค.": "Jul", "ส.ค.": "Aug", "ก.ย.": "Sep", "ต.ค.": "Oct", "พ.ย.": "Nov", "ธ.ค.": "Dec" };
+  const THAI = /[\u0E00-\u0E7F]/;
+  const dateRx = /(\d{1,2})\s+(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s+(\d{4})(\s+\d{1,2}:\d{2})?(\s*น\.)?/g;
+  function build() {
+    const m = Object.assign({}, I18N_DICT);
+    if (typeof REMOVAL_TYPES !== "undefined") {
+      REMOVAL_TYPES.forEach(r => { m[r.th + "/" + r.en] = r.en; m[r.th + " / " + r.en] = r.en; });
+    }
+    const keys = Object.keys(m).sort((a, b) => b.length - a.length);
+    map = m;
+    rx = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+    builtFor = typeof REMOVAL_TYPES !== "undefined" ? 1 : 0;
+  }
+  function tr(str) {
+    if (lang !== "en" || !str || !THAI.test(str)) return str;
+    if (!rx || (builtFor === 0 && typeof REMOVAL_TYPES !== "undefined")) build();
+    let out = str.replace(dateRx, (_, d, mo, y, t) => {
+      const yr = parseInt(y, 10); const g = yr > 2400 ? yr - 543 : yr;
+      return d + " " + MONTHS[mo] + " " + g + (t || "");
+    });
+    out = out.replace(rx, k => map[k]);
+    return out;
+  }
+  const textRec = new WeakMap();   // text node -> {orig, out}
+  const attrRec = new WeakMap();   // element -> {attr: {orig, out}}
+  const ATTRS = ["placeholder", "title", "aria-label"];
+  let applying = false;
+  function doText(n) {
+    let r = textRec.get(n);
+    if (r && n.data !== r.out) r = null;                // changed from outside -> new original
+    const orig = r ? r.orig : n.data;
+    if (lang === "en") {
+      const out = tr(orig);
+      if (out !== n.data) { n.data = out; }
+      if (out !== orig || r) textRec.set(n, { orig, out });
+    } else if (r) {
+      if (n.data !== r.orig) n.data = r.orig;
+      textRec.delete(n);
+    }
+  }
+  function doAttrs(el) {
+    let rec = attrRec.get(el);
+    ATTRS.forEach(a => {
+      if (!el.hasAttribute || !el.hasAttribute(a)) return;
+      const cur = el.getAttribute(a);
+      const r = rec && rec[a] && rec[a].out === cur ? rec[a] : null;
+      const orig = r ? r.orig : cur;
+      if (lang === "en") {
+        const out = tr(orig);
+        if (out !== cur) el.setAttribute(a, out);
+        if (out !== orig) { rec = rec || {}; rec[a] = { orig, out }; attrRec.set(el, rec); }
+      } else if (r) {
+        el.setAttribute(a, r.orig); delete rec[a];
+      }
+    });
+  }
+  function walk(root) {
+    if (!root) return;
+    if (root.nodeType === 3) { doText(root); return; }
+    if (root.nodeType !== 1) return;
+    if (root.tagName === "SCRIPT" || root.tagName === "STYLE") return;
+    doAttrs(root);
+    const tw = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null);
+    let n;
+    while ((n = tw.nextNode())) {
+      if (n.nodeType === 3) { if (n.parentNode && (n.parentNode.tagName === "SCRIPT" || n.parentNode.tagName === "STYLE")) continue; doText(n); }
+      else doAttrs(n);
+    }
+  }
+  function run(fn) { applying = true; try { fn(); } finally { applying = false; } }
+  let obs = null;
+  function start() {
+    if (obs) return;
+    obs = new MutationObserver(muts => {
+      if (applying) return;
+      run(() => {
+        muts.forEach(m => {
+          if (m.type === "childList") m.addedNodes.forEach(walk);
+          else if (m.type === "characterData") doText(m.target);
+          else if (m.type === "attributes") doAttrs(m.target);
+        });
+      });
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+  }
+  function syncSwitch() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll(".langSwitch button").forEach(b => b.classList.toggle("active", b.dataset.lang === lang));
+  }
+  function refresh() {
+    run(() => { walk(document.body); });
+    if (!document.title._o) { /* title has no Thai */ }
+    syncSwitch();
+  }
+  function setLang(l) {
+    lang = l === "en" ? "en" : "th";
+    try { localStorage.setItem("ppr_lang", lang); } catch (e) {}
+    refresh();
+  }
+  function init() { start(); refresh(); }
+  return { tr, setLang, init, refresh, get lang() { return lang; } };
+})();
+function setLang(l) { I18N.setLang(l); }
+(function () {
+  const _confirm = window.confirm.bind(window), _alert = window.alert.bind(window);
+  window.confirm = m => _confirm(I18N.tr(m));
+  window.alert = m => _alert(I18N.tr(m));
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => I18N.init());
+  else I18N.init();
+})();
+// ==========================================================
+
 // ---------- Firebase config ----------
 const firebaseConfig = {
   apiKey: "AIzaSyCHMYRJ42snU4pF-7w66QroXF9tG_4PcsE",
@@ -1927,7 +2358,7 @@ function exportCsv() {
   }
   const headers = ["Pass No", "Requester", "Department", "Purpose", "Status", "Due Date", "Created At"];
   const rows = list.map(p => [
-    p.pass_no, p.requester_name, deptNameById(p.requester_dept), p.purpose_en, getStatusDisplay(p).text, p.due_date || "", fmtDate(p.created_at)
+    p.pass_no, p.requester_name, deptNameById(p.requester_dept), p.purpose_en, I18N.tr(getStatusDisplay(p).text), p.due_date || "", I18N.tr(fmtDate(p.created_at))
   ]);
   let csv = headers.join(",") + "\n" + rows.map(r => r.map(v => '"' + String(v || "").replace(/"/g, '""') + '"').join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
