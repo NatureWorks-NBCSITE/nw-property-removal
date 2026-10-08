@@ -311,6 +311,22 @@ const I18N_DICT = {
 "📊 Dashboard / แดชบอร์ด": "📊 Dashboard",
 "⚙️ Admin / ตั้งค่า": "⚙️ Admin",
 "ปิด / Close": "Close",
+"ผู้ช่วยแผนก (Department Delegate)": "Department Delegates",
+"Department Delegate (ผู้ช่วยแผนก)": "Department Delegate",
+"ผู้ที่ได้รับแต่งตั้ง (แผนกละไม่เกิน": "Appointed people (max.",
+"คน) จะเห็นและจัดการคำขอของแผนกนั้นแทนเจ้าของคำขอได้ เช่น แจ้งนำของกลับ ตรวจสอบของนำเข้า ขอขยายเวลา ยกเลิก และแก้ทะเบียนรถ — แต่ไม่สามารถอนุมัติแทนผู้อนุมัติได้ มีผลตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น": "per department) can see and manage that department's requests on behalf of the requester — e.g. notify return, inspect returned items, request extension, cancel, and edit vehicle plate — but cannot approve on behalf of approvers. Takes effect from that person's next login.",
+"ยังไม่มีผู้ช่วยแผนก": "No delegates yet",
+"+ เพิ่มผู้ช่วยแผนก": "+ Add delegate",
+"เพิ่มผู้ช่วยแผนกแล้ว": "Delegate added",
+"บุคคลนี้เป็นผู้ช่วยของแผนกนี้อยู่แล้ว": "This person is already a delegate of this department",
+"แผนกนี้มีผู้ช่วยครบ": "This department already has",
+"คนแล้ว กรุณาลบก่อนเพิ่มใหม่": "delegates. Please delete one before adding a new one.",
+"ยืนยันลบผู้ช่วยแผนกคนนี้?": "Delete this delegate?",
+"ดำเนินการแทนโดย": "Acted on behalf by",
+"แก้ไขทะเบียนรถ": "Edited vehicle plate",
+"ขอขยายเวลานำกลับ": "Requested return extension",
+"แจ้งนำของกลับ": "Notified return",
+"ตรวจสอบของนำเข้าแทนผู้ขอ": "Inspected returned items for requester",
 "ชื่อ นามสกุล": "First Last",
 "รปภ.": "Security",
 "ผจก.แผนก": "Dept. Manager",
@@ -357,7 +373,8 @@ const I18N_TH = {
 "Test Admin": "ผู้ดูแลระบบ (ทดสอบ)",
 "Admin / Safety": "ผู้ดูแล / Safety",
 "Department Manager": "ผู้จัดการแผนก",
-"Change Password": "เปลี่ยนรหัสผ่าน"
+"Change Password": "เปลี่ยนรหัสผ่าน",
+"Department Delegate (ผู้ช่วยแผนก)": "ผู้ช่วยแผนก"
 };
 const I18N = (function () {
   let lang = "th";
@@ -597,6 +614,11 @@ const L2_APPROVERS_DEFAULT = [
 ];
 // Live, possibly Firestore-overridden copy — this is what the rest of the app reads from.
 let L2_APPROVERS = L2_APPROVERS_DEFAULT.map(a => ({ ...a }));
+// Department Delegates — 1-2 people per department (set in Admin Settings, stored in Firestore "delegates").
+// A delegate can act as the OWNER of any request from their department (return notice, inspection, extension,
+// cancel, vehicle plate) when the real requester is absent. Delegates can NOT approve anything.
+let DEPT_DELEGATES = [];   // [{ id, dept, email, name }]
+const MAX_DELEGATES_PER_DEPT = 2;
 
 // Recipients notified whenever a requester submits a Return Notice (security + EHS return-confirmer group)
 // EHS return-confirmer group (also used as the final "Safety Department Head" closing recipients)
@@ -656,6 +678,31 @@ async function loadDynamicConfig() {
       L2_APPROVERS.sort((a, b) => a.order - b.order);
     }
   } catch (e) { console.error("Failed to load l2Approvers config:", e); }
+
+  try {
+    const dSnap = await db.collection("delegates").get();
+    DEPT_DELEGATES = dSnap.docs.map(doc => ({
+      id: doc.id, dept: doc.data().dept, email: (doc.data().email || "").toLowerCase(), name: doc.data().name || ""
+    })).filter(d => d.dept && d.email);
+  } catch (e) { console.error("Failed to load delegates config:", e); }
+}
+
+function delegateDeptsFor(email) {
+  return [...new Set(DEPT_DELEGATES.filter(d => d.email === email).map(d => d.dept))];
+}
+// Is the current user a delegate of this pass's department?
+function isDelegateFor(p) {
+  return !!p && (currentProfile.delegateDepts || []).includes(p.requester_dept);
+}
+// Audit fields added to a Firestore update when a delegate (not the owner) acts on someone else's request.
+function delegateStamp(p, actionLabel) {
+  if (!p || p.requester_email === currentProfile.email || !isDelegateFor(p)) return {};
+  return {
+    delegate_by_email: currentProfile.email,
+    delegate_by_name: currentProfile.name,
+    delegate_action: actionLabel,
+    delegate_at: firebase.firestore.FieldValue.serverTimestamp()
+  };
 }
 
 const configLoadedPromise = loadDynamicConfig();
@@ -778,7 +825,9 @@ async function doSignup() {
   const email = document.getElementById("suEmail").value.trim();
   const dept = document.getElementById("suDept").value;
   const pw = document.getElementById("suPassword").value;
-  if (!name || !email || !dept || !pw) { showAuthMsg("กรอกข้อมูลให้ครบ", "err"); return; }
+  // Level-2 approvers (executives) have no department — department is optional for them.
+  const noDeptOk = L2_APPROVERS.some(x => x.email === email.toLowerCase());
+  if (!name || !email || (!dept && !noDeptOk) || !pw) { showAuthMsg("กรอกข้อมูลให้ครบ", "err"); return; }
   if (!emailDomainOk(email)) { showAuthMsg("กรุณาใช้ Email บริษัท (@natureworkspla.com หรือ @natureworksco.com)", "err"); return; }
   if (pw.length < 6) { showAuthMsg("Password ต้องมีอย่างน้อย 6 ตัวอักษร", "err"); return; }
   const btn = document.getElementById("btnSignup");
@@ -787,7 +836,7 @@ async function doSignup() {
     const cred = await auth.createUserWithEmailAndPassword(email, pw);
     await cred.user.updateProfile({ displayName: name });
     await db.collection("users").doc(email.toLowerCase()).set({
-      name, email: email.toLowerCase(), department: dept, created_at: firebase.firestore.FieldValue.serverTimestamp()
+      name, email: email.toLowerCase(), department: dept || null, created_at: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {
     showAuthMsg(translateAuthErr(e), "err");
@@ -903,6 +952,13 @@ auth.onAuthStateChanged(async (user) => {
 });
 
 async function resolveUserProfile(email, authDisplayName) {
+  const prof = await resolveUserProfileBase(email, authDisplayName);
+  prof.delegateDepts = delegateDeptsFor(email);
+  if (prof.delegateDepts.length) prof.roles = [...new Set([...prof.roles, "dept_delegate"])];
+  return prof;
+}
+
+async function resolveUserProfileBase(email, authDisplayName) {
   const dirEntry = APPROVER_DIRECTORY[email];
   let roles = dirEntry ? [...dirEntry.roles] : [];
   let department = dirEntry ? dirEntry.department : null;
@@ -947,6 +1003,7 @@ function roleLabel(roles) {
   if (roles.includes("admin")) return "Admin / Safety";
   if (roles.includes("l2_approver")) return "ผู้อนุมัติขั้น 2";
   if (roles.includes("dept_manager")) return "Department Manager";
+  if (roles.includes("dept_delegate")) return "Department Delegate (ผู้ช่วยแผนก)";
   if (roles.includes("security")) return "Security / รปภ.";
   return "ผู้ขอทั่วไป (Requester)";
 }
@@ -1095,7 +1152,9 @@ function getVisiblePasses(list) {
     return list.filter(p => p.approver_l2_email === currentProfile.email);
   }
   // General requester (no special role) — only their own submitted requests, not everyone's.
-  return list.filter(p => p.requester_email === currentProfile.email);
+  // A Department Delegate additionally sees every request of the department(s) they were assigned to.
+  const dd = currentProfile.delegateDepts || [];
+  return list.filter(p => p.requester_email === currentProfile.email || dd.includes(p.requester_dept));
 }
 
 // PASSES LIST VIEW rendering, new request form, detail modal, tracking, dashboard, admin views appended below.
@@ -1505,19 +1564,20 @@ function openPassDetail(id) {
   const canApproveL1 = (roles.includes("dept_manager") && visibleDeptIdsForCurrentUser().includes(p.requester_dept)) || isTestAdmin;
   const canApproveL2 = (roles.includes("l2_approver") && p.approver_l2_email === currentProfile.email) || isTestAdmin;
   const canSecurityOut = (roles.includes("security") || isTestAdmin) && p.status === "approved";
-  const canSelfCheckReturn = (p.requester_email === currentProfile.email || isTestAdmin) && p.status === "return_pending_requester" && p.requires_return;
+  const isOwnerLike = p.requester_email === currentProfile.email || isDelegateFor(p) || isTestAdmin;
+  const canSelfCheckReturn = isOwnerLike && p.status === "return_pending_requester" && p.requires_return;
   const canConfirmReturn = (roles.includes("return_confirmer") || roles.includes("security") || isTestAdmin) && p.status === "return_pending_security" && p.requires_return;
   const ehsManagerInfo = DEPARTMENTS.find(d => d.id === "ehs");
   const canApproveReturnL1 = ((roles.includes("dept_manager") && visibleDeptIdsForCurrentUser().includes(p.requester_dept)) || isTestAdmin) && p.status === "return_pending_l1";
   const canApproveReturnEhs = ((currentProfile.email === ehsManagerInfo.l1_email) || isTestAdmin) && p.status === "return_pending_ehs";
-  const canNotifyReturn = (p.requester_email === currentProfile.email || isTestAdmin) && p.status === "issued" && p.requires_return && !p.ext_status;
+  const canNotifyReturn = isOwnerLike && p.status === "issued" && p.requires_return && !p.ext_status;
   const canApproveExtL1 = (canApproveL1) && p.ext_status === "pending_l1";
   const canApproveExtL2 = (canApproveL2) && p.ext_status === "pending_l2";
-  const canRequestExtension = (p.requester_email === currentProfile.email || isTestAdmin) && !roles.includes("security") && p.requires_return &&
+  const canRequestExtension = isOwnerLike && !roles.includes("security") && p.requires_return &&
     p.status === "issued" && !p.ext_status && (p.ext_count || 0) < 3;
-  const canCancelRequest = (p.requester_email === currentProfile.email || isTestAdmin) &&
+  const canCancelRequest = isOwnerLike &&
     ["pending_l1", "pending_l2", "approved"].includes(p.status) && !p.ext_status;
-  const canEditVehicle = isTestAdmin || currentProfile.email === p.requester_email ||
+  const canEditVehicle = isTestAdmin || currentProfile.email === p.requester_email || isDelegateFor(p) ||
     currentProfile.email === p.approver_l1_email || currentProfile.email === p.approver_l2_email ||
     roles.includes("security") || roles.includes("return_confirmer");
 
@@ -1679,6 +1739,7 @@ function openPassDetail(id) {
           '<div class="kv"><span class="k">ทะเบียนรถ</span><span>' + escapeHtml(p.vehicle_plate || "-") + '</span></div>') +
         '<div class="kv"><span class="k">มูลค่าสินค้า (โดยประมาณ)</span><span>' + fmtMoney(p.item_value, p.item_value_currency) + '</span></div>' +
         (p.note ? '<div class="kv"><span class="k">หมายเหตุ</span><span>' + escapeHtml(p.note) + '</span></div>' : "") +
+        (p.delegate_by_name ? '<div class="kv"><span class="k">ดำเนินการแทนโดย</span><span>' + escapeHtml(p.delegate_by_name) + ' — ' + escapeHtml(p.delegate_action || "") + '</span></div>' : "") +
         (p.return_notice_date ? '<div class="kv"><span class="k">แจ้งนำกลับ</span><span>' + escapeHtml(p.return_notice_date) + ' ' + escapeHtml(p.return_notice_time || "") + '</span></div>' : "") +
       '</div>' +
 
@@ -1740,6 +1801,7 @@ async function saveVehiclePlate(id) {
   try {
     await db.collection("passes").doc(id).update({
       vehicle_plate: val,
+      ...delegateStamp(allPasses.find(x => x.id === id), "แก้ไขทะเบียนรถ"),
       vehicle_plate_updated_by: currentProfile.email,
       vehicle_plate_updated_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
@@ -1754,6 +1816,7 @@ async function cancelRequest(id) {
   try {
     await db.collection("passes").doc(id).update({
       status: "cancelled",
+      ...delegateStamp(p, "ยกเลิกคำขอ"),
       cancelled_by: currentProfile.email,
       cancelled_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
@@ -1788,6 +1851,7 @@ async function submitExtensionRequest(id) {
   try {
     await db.collection("passes").doc(id).update({
       ext_status: "pending_l1",
+      ...delegateStamp(p, "ขอขยายเวลานำกลับ"),
       ext_requested_due_date: newDate,
       ext_reason: reason,
       ext_requested_by: currentProfile.email,
@@ -2103,6 +2167,7 @@ async function submitReturnNotice(id) {
   try {
     await db.collection("passes").doc(id).update({
       status: "return_pending_requester",
+      ...delegateStamp(p, "แจ้งนำของกลับ"),
       return_notice_date: date,
       return_notice_time: time,
       return_notice_by: currentProfile.email,
@@ -2122,6 +2187,7 @@ async function submitSelfCheckReturn(id) {
   try {
     await db.collection("passes").doc(id).update({
       status: "return_pending_security",
+      ...delegateStamp(p, "ตรวจสอบของนำเข้าแทนผู้ขอ"),
       requester_check_item_photos: itemPhotos,
       requester_check_by: currentProfile.email,
       requester_check_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2423,9 +2489,62 @@ function renderAdminView() {
       '<button class="addItemBtn" onclick="addL2ApproverRow()">+ เพิ่มผู้อนุมัติขั้น 2</button>' +
     '</div>' +
     '<div class="formCard">' +
+      '<h3 style="margin-top:0;">ผู้ช่วยแผนก (Department Delegate)</h3>' +
+      '<p style="font-size:15px;color:var(--muted);margin-top:-6px;">ผู้ที่ได้รับแต่งตั้ง (แผนกละไม่เกิน ' + MAX_DELEGATES_PER_DEPT + ' คน) จะเห็นและจัดการคำขอของแผนกนั้นแทนเจ้าของคำขอได้ เช่น แจ้งนำของกลับ ตรวจสอบของนำเข้า ขอขยายเวลา ยกเลิก และแก้ทะเบียนรถ — แต่ไม่สามารถอนุมัติแทนผู้อนุมัติได้ มีผลตั้งแต่ Login ครั้งถัดไปของบุคคลนั้น</p>' +
+      delegatesTableHtml() +
+      '<div style="display:grid;grid-template-columns:1.2fr 1.3fr 1.6fr auto;gap:8px;align-items:end;padding:12px 0 0;">' +
+        '<div class="field" style="margin:0;"><label>แผนก</label><select id="dlgDept"><option value="">เลือกแผนก</option>' + DEPARTMENTS.map(d => '<option value="' + d.id + '">' + escapeHtml(d.name_th) + '</option>').join("") + '</select></div>' +
+        '<div class="field" style="margin:0;"><label>ชื่อ</label><input type="text" id="dlgName"></div>' +
+        '<div class="field" style="margin:0;"><label>Email</label><input type="email" id="dlgEmail" placeholder="name@natureworkspla.com"></div>' +
+        '<button class="btnGhost" style="padding:9px 14px;" onclick="addDelegate()">+ เพิ่มผู้ช่วยแผนก</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="formCard">' +
       '<h3 style="margin-top:0;">ข้อมูลอ้างอิงอื่นๆ (Read-only)</h3>' +
       '<p style="font-size:15px;color:var(--muted);">ประเภทการนำออก, หน่วยนับ, และรายชื่อแผนก กำหนดไว้ในตัวแอปโดยตรง หากต้องการเพิ่ม/ลดแผนก หรือประเภทการนำออก แจ้ง Developer เพื่อแก้ไขใน app.js</p>' +
     '</div>';
+}
+
+function delegatesTableHtml() {
+  if (!DEPT_DELEGATES.length) return '<div style="color:var(--muted);font-size:15px;padding:6px 0;">ยังไม่มีผู้ช่วยแผนก</div>';
+  const rows = DEPT_DELEGATES.slice().sort((a, b) => deptNameById(a.dept).localeCompare(deptNameById(b.dept)));
+  return rows.map(d =>
+    '<div style="display:grid;grid-template-columns:1.2fr 1.3fr 1.6fr auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">' +
+      '<div style="font-size:15.5px;font-weight:600;color:var(--navy);">' + escapeHtml(deptNameById(d.dept)) + '</div>' +
+      '<div style="font-size:15px;">' + escapeHtml(d.name) + '</div>' +
+      '<div style="font-size:15px;color:var(--muted);word-break:break-all;">' + escapeHtml(d.email) + '</div>' +
+      '<button class="btnDanger" style="padding:7px 14px;" onclick="deleteDelegate(\'' + d.id + '\')">ลบ</button>' +
+    '</div>').join("");
+}
+
+async function addDelegate() {
+  const dept = document.getElementById("dlgDept").value;
+  const name = document.getElementById("dlgName").value.trim();
+  const email = document.getElementById("dlgEmail").value.trim().toLowerCase();
+  if (!dept) return showToast("กรุณาเลือกแผนก", "err");
+  if (!name || !email) return showToast("กรุณากรอกชื่อและ Email ให้ครบ", "err");
+  if (!email.includes("@")) return showToast("รูปแบบ Email ไม่ถูกต้อง", "err");
+  if (DEPT_DELEGATES.some(d => d.dept === dept && d.email === email)) return showToast("บุคคลนี้เป็นผู้ช่วยของแผนกนี้อยู่แล้ว", "err");
+  if (DEPT_DELEGATES.filter(d => d.dept === dept).length >= MAX_DELEGATES_PER_DEPT) {
+    return showToast("แผนกนี้มีผู้ช่วยครบ " + MAX_DELEGATES_PER_DEPT + " คนแล้ว กรุณาลบก่อนเพิ่มใหม่", "err");
+  }
+  const id = dept + "__" + email.replace(/[^a-zA-Z0-9]/g, "_");
+  try {
+    await db.collection("delegates").doc(id).set({ dept, name, email });
+    DEPT_DELEGATES.push({ id, dept, email, name });
+    showToast("เพิ่มผู้ช่วยแผนกแล้ว", "ok");
+    renderAdminView();
+  } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
+}
+
+async function deleteDelegate(id) {
+  if (!confirm("ยืนยันลบผู้ช่วยแผนกคนนี้?")) return;
+  try {
+    await db.collection("delegates").doc(id).delete();
+    DEPT_DELEGATES = DEPT_DELEGATES.filter(d => d.id !== id);
+    showToast("ลบแล้ว", "ok");
+    renderAdminView();
+  } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
 function deptApproverRowHtml(d) {
