@@ -327,6 +327,13 @@ const I18N_DICT = {
 "ขอขยายเวลานำกลับ": "Requested return extension",
 "แจ้งนำของกลับ": "Notified return",
 "ตรวจสอบของนำเข้าแทนผู้ขอ": "Inspected returned items for requester",
+"แจ้งนำของกลับสำเร็จ เมื่อของถึงแล้ว รปภ./Safety จะตรวจก่อน จากนั้นผู้ขอตรวจสอบ+แนบรูปในระบบอีกครั้ง": "Return notified. When the items arrive, Security/Safety inspects first, then the requester inspects and attaches photos.",
+"ยืนยันตรวจของแล้ว ส่งต่อให้ผู้ขอตรวจสอบของนำเข้า": "Inspection confirmed — passed to requester for inspection",
+"📦 ตรวจสอบของที่นำเข้ามา (หลัง รปภ./Safety ตรวจแล้ว)": "📦 Inspect returned items (after Security/Safety inspection)",
+"✔ ตรวจสอบแล้ว ส่งต่อให้ผจก.แผนก": "✔ Inspected — pass to Dept. Manager",
+"✔ ยืนยันตรวจของแล้ว ส่งต่อให้ผู้ขอ": "✔ Inspection confirmed — pass to requester",
+"รปภ./Safety และผู้ขอตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ": "Security/Safety and the requester have inspected the items. Please acknowledge before it goes to the Safety Department Head for closing.",
+"รอผู้ขอตรวจสอบของนำเข้า": "Waiting for requester to inspect returned items",
 "ชื่อ นามสกุล": "First Last",
 "รปภ.": "Security",
 "ผจก.แผนก": "Dept. Manager",
@@ -501,36 +508,58 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 // ---------- EmailJS (notification emails) ----------
-// TODO: replace these 3 values after Jay signs up at emailjs.com (see setup guide in chat)
-const EMAILJS_PUBLIC_KEY = "3sGt-ZuFOKnhOCi4E";
-const EMAILJS_SERVICE_ID = "service_zmwbtqh";
-const EMAILJS_TEMPLATE_ID = "template_ko6gf6c";
+// Accounts are tried in order. If one fails (quota used up, account suspended, network/API error) the mail is
+// automatically re-sent through the next account, and the failed account is skipped for 30 minutes so later
+// mails don't waste time on it. To add a backup account: fill in the 2nd entry below (3 values from EmailJS).
+const EMAILJS_ACCOUNTS = [
+  { name: "Account 1", publicKey: "3sGt-ZuFOKnhOCi4E", serviceId: "service_zmwbtqh", templateId: "template_ko6gf6c" },
+  { name: "Account 2", publicKey: "YOUR_PUBLIC_KEY_2", serviceId: "YOUR_SERVICE_ID_2", templateId: "YOUR_TEMPLATE_ID_2" }
+];
+const EMAILJS_SKIP_MINUTES = 30;
+const _emailAcctFailedAt = {};
 
-if (window.emailjs && EMAILJS_PUBLIC_KEY !== "YOUR_PUBLIC_KEY") {
-  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+function emailAcctConfigured(a) {
+  return a && a.publicKey && a.serviceId && a.templateId && !/^YOUR_/.test(a.publicKey + a.serviceId + a.templateId);
 }
 
 function biSubject(th, en) { return th + " / " + en; }
 function biMessage(th, en) { return th + "\n\n— English —\n" + en; }
 
+// Send one EmailJS request using the first healthy account; falls back to the next on failure.
+async function emailjsSendWithFailover(params, logLabel) {
+  const all = EMAILJS_ACCOUNTS.filter(emailAcctConfigured);
+  if (all.length === 0 || !window.emailjs) {
+    console.warn("EmailJS not configured — skipping email:", logLabel);
+    return false;
+  }
+  const now = Date.now();
+  const healthy = all.filter(a => !_emailAcctFailedAt[a.name] || now - _emailAcctFailedAt[a.name] > EMAILJS_SKIP_MINUTES * 60000);
+  // if every account is currently in the "skip" window, just try them all again in order
+  const order = healthy.length ? healthy : all;
+  for (const a of order) {
+    try {
+      await emailjs.send(a.serviceId, a.templateId, params, { publicKey: a.publicKey });
+      delete _emailAcctFailedAt[a.name];
+      return true;
+    } catch (e) {
+      _emailAcctFailedAt[a.name] = Date.now();
+      console.error("Email send failed via " + a.name + ":", e, "— trying next account if any");
+    }
+  }
+  console.error("Email NOT sent (all accounts failed):", logLabel);
+  return false;
+}
+
 async function sendNotifyEmail(toEmail, toName, subject, message, passNo) {
   if (!toEmail) return;
-  if (EMAILJS_SERVICE_ID === "YOUR_SERVICE_ID") {
-    console.warn("EmailJS not configured yet — skipping email:", subject, "to", toEmail);
-    return;
-  }
-  try {
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: toEmail,
-      to_name: toName || toEmail,
-      subject: subject,
-      message: message,
-      pass_no: passNo || "",
-      link: window.location.origin + window.location.pathname
-    });
-  } catch (e) {
-    console.error("Email send failed:", e);
-  }
+  await emailjsSendWithFailover({
+    to_email: toEmail,
+    to_name: toName || toEmail,
+    subject: subject,
+    message: message,
+    pass_no: passNo || "",
+    link: window.location.origin + window.location.pathname
+  }, subject + " -> " + toEmail);
 }
 
 // Sends to several recipients in a SINGLE EmailJS request (comma-separated "to") instead of
@@ -540,22 +569,14 @@ async function sendNotifyEmail(toEmail, toName, subject, message, passNo) {
 async function sendNotifyEmailMulti(recipients, subject, message, passNo) {
   const list = (recipients || []).filter(r => r && r.email);
   if (list.length === 0) return;
-  if (EMAILJS_SERVICE_ID === "YOUR_SERVICE_ID") {
-    console.warn("EmailJS not configured yet — skipping email:", subject, "to", list.map(r => r.email).join(","));
-    return;
-  }
-  try {
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: list.map(r => r.email).join(","),
-      to_name: list.map(r => r.name).filter(Boolean).join(", "),
-      subject: subject,
-      message: message,
-      pass_no: passNo || "",
-      link: window.location.origin + window.location.pathname
-    });
-  } catch (e) {
-    console.error("Email send failed:", e);
-  }
+  await emailjsSendWithFailover({
+    to_email: list.map(r => r.email).join(","),
+    to_name: list.map(r => r.name).filter(Boolean).join(", "),
+    subject: subject,
+    message: message,
+    pass_no: passNo || "",
+    link: window.location.origin + window.location.pathname
+  }, subject + " -> " + list.map(r => r.email).join(","));
 }
 
 // ---------- Cloudinary ----------
@@ -1605,11 +1626,11 @@ function openPassDetail(id) {
     }
     if (canSelfCheckReturn) {
       blocks.push(
-        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)</div>' +
+        '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">' + (p.return_flow === 2 ? '📦 ตรวจสอบของที่นำเข้ามา (หลัง รปภ./Safety ตรวจแล้ว)' : '📦 ตรวจสอบของที่นำเข้ามา (ก่อนส่งต่อ รปภ.)') + '</div>' +
         '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">แจ้งนำกลับไว้: ' + escapeHtml(p.return_notice_date || "-") + ' เวลา ' + escapeHtml(p.return_notice_time || "-") + '</div>' +
         '<div style="font-size:15.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
-      '<div class="formActions"><button class="btnSuccess" onclick="submitSelfCheckReturn(\'' + p.id + '\')">✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.</button></div>'
+      '<div class="formActions"><button class="btnSuccess" onclick="submitSelfCheckReturn(\'' + p.id + '\')">' + (p.return_flow === 2 ? '✔ ตรวจสอบแล้ว ส่งต่อให้ผจก.แผนก' : '✔ ตรวจสอบแล้ว ส่งต่อให้ รปภ.') + '</button></div>'
       );
     }
     if (canConfirmReturn) {
@@ -1619,7 +1640,7 @@ function openPassDetail(id) {
         (p.return_last_reject_reason ? '<div style="background:#FDECEC;color:var(--danger);font-size:14.5px;padding:8px 10px;border-radius:6px;margin-bottom:10px;">ครั้งก่อนถูกปฏิเสธ: ' + escapeHtml(p.return_last_reject_reason) + '</div>' : "") +
         '<div style="font-size:15.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">📷 ถ่ายรูปยืนยันทีละรายการ (เทียบกับรูปตอนนำออก)</div>' +
         itemPhotoCompareHtml(p.items) +
-      '<div class="formActions"><button class="btnSuccess" id="btnConfirmReturn" onclick="confirmReturn(\'' + p.id + '\')">✔ ยืนยันคืนของแล้ว</button></div>' +
+      '<div class="formActions"><button class="btnSuccess" id="btnConfirmReturn" onclick="confirmReturn(\'' + p.id + '\')">' + (p.return_flow === 2 ? '✔ ยืนยันตรวจของแล้ว ส่งต่อให้ผู้ขอ' : '✔ ยืนยันคืนของแล้ว') + '</button></div>' +
       '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">' +
         reasonDropdownHtml("retReject", RETURN_REJECT_REASONS) +
         '<div class="formActions"><button class="btnDanger" onclick="rejectReturnCheck(\'' + p.id + '\')">✕ ปฏิเสธ ของไม่ครบ/มีปัญหา</button></div>' +
@@ -1629,7 +1650,7 @@ function openPassDetail(id) {
     if (canApproveReturnL1) {
       blocks.push(
         '<div style="font-size:16.5px;font-weight:700;color:var(--navy);margin-bottom:10px;">📋 รับทราบ & อนุมัติปิดคำขอ (ผจก.แผนก)</div>' +
-        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ</div>' +
+        '<div style="font-size:15px;color:var(--muted);margin-bottom:10px;">' + (p.return_flow === 2 ? 'รปภ./Safety และผู้ขอตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ' : 'รปภ./Safety ตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ') + '</div>' +
         '<div class="field"><label>เหตุผล (กรณีส่งกลับให้ตรวจใหม่)</label><input type="text" id="rejReturnL1Reason" placeholder="ระบุเหตุผล..."></div>' +
         '<div class="formActions">' +
           '<button class="btnSuccess" onclick="approveReturnL1(\'' + p.id + '\')">✔ รับทราบ & ส่งต่อ Safety Department Head</button>' +
@@ -1703,8 +1724,11 @@ function openPassDetail(id) {
   }
   const securityPhotosHtml =
     stagePhotoHistoryHtml("รูปตอนออก (Security) — ทีละรายการ", p.security_out_item_photos, p.security_out_photo_url, p.security_out_at) +
-    stagePhotoHistoryHtml("รูปตอนผู้ขอตรวจสอบของนำเข้า — ทีละรายการ", p.requester_check_item_photos, p.requester_check_photo_url, p.requester_check_at) +
-    stagePhotoHistoryHtml("รูปตอนคืน (รปภ./Safety) — ทีละรายการ", p.return_item_photos, p.return_photo_url, p.return_at);
+    (p.return_flow === 2
+      ? stagePhotoHistoryHtml("รูปตอนคืน (รปภ./Safety) — ทีละรายการ", p.return_item_photos, p.return_photo_url, p.return_at) +
+        stagePhotoHistoryHtml("รูปตอนผู้ขอตรวจสอบของนำเข้า — ทีละรายการ", p.requester_check_item_photos, p.requester_check_photo_url, p.requester_check_at)
+      : stagePhotoHistoryHtml("รูปตอนผู้ขอตรวจสอบของนำเข้า — ทีละรายการ", p.requester_check_item_photos, p.requester_check_photo_url, p.requester_check_at) +
+        stagePhotoHistoryHtml("รูปตอนคืน (รปภ./Safety) — ทีละรายการ", p.return_item_photos, p.return_photo_url, p.return_at));
 
   const modalHtml =
   '<div class="modalOverlay" onclick="if(event.target.classList.contains(\'modalOverlay\'))closeModal()">' +
@@ -2166,7 +2190,8 @@ async function submitReturnNotice(id) {
   const p = allPasses.find(x => x.id === id);
   try {
     await db.collection("passes").doc(id).update({
-      status: "return_pending_requester",
+      status: "return_pending_security",   // new order: Security/Safety inspects FIRST, then the requester
+      return_flow: 2,
       ...delegateStamp(p, "แจ้งนำของกลับ"),
       return_notice_date: date,
       return_notice_time: time,
@@ -2174,8 +2199,19 @@ async function submitReturnNotice(id) {
       return_notice_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast("แจ้งนำของกลับสำเร็จ เมื่อของถึงแล้วกลับมาตรวจสอบ+แนบรูปในระบบอีกครั้ง", "ok");
+    showToast("แจ้งนำของกลับสำเร็จ เมื่อของถึงแล้ว รปภ./Safety จะตรวจก่อน จากนั้นผู้ขอตรวจสอบ+แนบรูปในระบบอีกครั้ง", "ok");
     closeModal();
+    if (p) {
+      sendNotifyEmail(
+        SECURITY_CONTACT.email, SECURITY_CONTACT.name,
+        biSubject("มีการแจ้งนำของกลับ โปรดตรวจของเมื่อมาถึง", "Return notice — please inspect items on arrival") + " - " + p.pass_no,
+        biMessage(
+          p.requester_name + " (" + deptNameById(p.requester_dept) + ") แจ้งนำของกลับวันที่ " + date + " เวลา " + time + " กรุณาตรวจของและถ่ายรูปยืนยันในระบบ (Tab \"Security Check\") เมื่อของมาถึง",
+          p.requester_name + " (" + deptNameById(p.requester_dept) + ") will return the items on " + date + " at " + time + ". Please inspect them and attach a confirmation photo in the system (\"Security Check\" tab) on arrival."
+        ),
+        p.pass_no
+      );
+    }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
 
@@ -2184,19 +2220,32 @@ async function submitSelfCheckReturn(id) {
   if (!p) return;
   if (!allItemStagePhotosReady((p.items || []).length)) return showToast("กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ", "err");
   const itemPhotos = buildItemStagePhotosArray(p.items || []);
+  // New flow (return_flow 2): Security already inspected -> requester's check goes straight to the Dept Manager.
+  // Legacy passes (no return_flow) keep the old order: requester check -> Security.
+  const newFlow = p.return_flow === 2;
   try {
     await db.collection("passes").doc(id).update({
-      status: "return_pending_security",
+      status: newFlow ? "return_pending_l1" : "return_pending_security",
       ...delegateStamp(p, "ตรวจสอบของนำเข้าแทนผู้ขอ"),
       requester_check_item_photos: itemPhotos,
       requester_check_by: currentProfile.email,
       requester_check_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast("ยืนยันตรวจสอบของนำเข้าแล้ว ส่งต่อให้ รปภ./Safety ตรวจสอบ", "ok");
+    showToast(newFlow ? "ยืนยันตรวจสอบของนำเข้าแล้ว ส่งต่อให้ผจก.แผนกรับทราบและปิดคำขอ" : "ยืนยันตรวจสอบของนำเข้าแล้ว ส่งต่อให้ รปภ./Safety ตรวจสอบ", "ok");
     resetItemStagePhotos();
     closeModal();
-    if (p) {
+    if (p && newFlow) {
+      sendNotifyEmail(
+        p.approver_l1_email, p.approver_l1_name,
+        biSubject("รอรับทราบและอนุมัติปิดคำขอ", "Awaiting acknowledgement to close the request") + " - " + p.pass_no,
+        biMessage(
+          "รปภ./Safety และ " + p.requester_name + " ตรวจสอบของที่นำกลับเรียบร้อยแล้ว กรุณาเข้าระบบเพื่อรับทราบและอนุมัติปิดคำขอ",
+          "Security/Safety and " + p.requester_name + " have completed inspection of the returned items. Please log in to acknowledge and approve closing the request."
+        ),
+        p.pass_no
+      );
+    } else if (p) {
       sendNotifyEmail(
         SECURITY_CONTACT.email, SECURITY_CONTACT.name,
         biSubject("โปรดตรวจของที่นำกลับ", "Please inspect returned items") + " - " + p.pass_no,
@@ -2215,18 +2264,31 @@ async function confirmReturn(id) {
   if (!p) return;
   if (!allItemStagePhotosReady((p.items || []).length)) return showToast("กรุณาถ่ายรูปยืนยันให้ครบทุกรายการ", "err");
   const itemPhotos = buildItemStagePhotosArray(p.items || []);
+  // New flow (return_flow 2): after Security's inspection the REQUESTER inspects next.
+  // Legacy passes (no return_flow) already had the requester check -> go straight to the Dept Manager.
+  const newFlow = p.return_flow === 2;
   try {
     await db.collection("passes").doc(id).update({
-      status: "return_pending_l1",
+      status: newFlow ? "return_pending_requester" : "return_pending_l1",
       return_item_photos: itemPhotos,
       return_by: currentProfile.email,
       return_at: firebase.firestore.FieldValue.serverTimestamp(),
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast("ยืนยันตรวจของแล้ว ส่งต่อให้ผจก.แผนกรับทราบและปิดคำขอ", "ok");
+    showToast(newFlow ? "ยืนยันตรวจของแล้ว ส่งต่อให้ผู้ขอตรวจสอบของนำเข้า" : "ยืนยันตรวจของแล้ว ส่งต่อให้ผจก.แผนกรับทราบและปิดคำขอ", "ok");
     resetItemStagePhotos();
     closeModal();
-    if (p) {
+    if (p && newFlow) {
+      sendNotifyEmail(
+        p.requester_email, p.requester_name,
+        biSubject("โปรดตรวจสอบของที่นำกลับ", "Please inspect the returned items") + " - " + p.pass_no,
+        biMessage(
+          "รปภ./Safety ตรวจของที่นำกลับของท่านแล้ว กรุณาเข้าระบบเพื่อตรวจสอบของและถ่ายรูปยืนยันเป็นขั้นตอนต่อไป (ใบ " + p.pass_no + ")",
+          "Security/Safety has inspected your returned items. Please log in to inspect them and attach confirmation photos as the next step (" + p.pass_no + ")."
+        ),
+        p.pass_no
+      );
+    } else if (p) {
       sendNotifyEmail(
         p.approver_l1_email, p.approver_l1_name,
         biSubject("รอรับทราบและอนุมัติปิดคำขอ", "Awaiting acknowledgement to close the request") + " - " + p.pass_no,
@@ -2282,8 +2344,8 @@ async function rejectReturnL1(id) {
     showToast("ส่งกลับให้ รปภ./Safety ตรวจสอบใหม่แล้ว", "ok");
     closeModal();
     if (p) {
-      sendNotifyEmail(
-        p.requester_email, p.requester_name,
+      sendNotifyEmailMulti(
+        p.return_flow === 2 ? [{ email: p.requester_email, name: p.requester_name }, SECURITY_CONTACT] : [{ email: p.requester_email, name: p.requester_name }],
         biSubject("คำขอถูกส่งกลับให้ตรวจสอบใหม่", "Request sent back for re-inspection") + " - " + p.pass_no,
         biMessage(
           "ผจก.แผนกส่งคำขอกลับให้ รปภ./Safety ตรวจสอบใหม่ เหตุผล: " + reason,
@@ -2421,7 +2483,7 @@ function renderDashboardView() {
   const issued = list.filter(p => p.status === "issued").length;
   const overdueCount = list.filter(isOverdue).length;
 
-  const statusOrder = ["pending_l1", "pending_l2", "approved", "issued", "return_pending_requester", "return_pending_security", "return_pending_l1", "return_pending_ehs", "returned", "rejected", "cancelled"];
+  const statusOrder = ["pending_l1", "pending_l2", "approved", "issued", "return_pending_security", "return_pending_requester", "return_pending_l1", "return_pending_ehs", "returned", "rejected", "cancelled"];
   const statusColors = { pending_l1: "#E2A400", pending_l2: "#E07A1F", approved: "#2F6FED", issued: "#1F497D", return_pending_requester: "#B45309", return_pending_security: "#7C5CE0", return_pending_l1: "#0369A1", return_pending_ehs: "#15803D", returned: "#2E8B57", rejected: "#D64545", cancelled: "#6B7280" };
   const statusCounts = {};
   statusOrder.forEach(s => statusCounts[s] = list.filter(p => p.status === s).length);
