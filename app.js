@@ -592,7 +592,30 @@ async function uploadToCloudinary(file) {
   const res = await fetch(url, { method: "POST", body: fd });
   if (!res.ok) throw new Error("Upload failed");
   const data = await res.json();
-  return data.secure_url;
+  return cldBrowserSafeUrl(data.secure_url);
+}
+
+// iPhone photos are HEIC/HEIF. Phones (Safari) can show them but desktop Chrome/Edge cannot — the image shows as
+// a broken icon on a PC. Cloudinary can convert on delivery: put f_jpg in the URL and use a .jpg extension.
+// Applied to new uploads AND (below) to every stored photo URL when passes are loaded, so old photos are fixed too.
+function cldBrowserSafeUrl(u) {
+  if (typeof u !== "string") return u;
+  const m = u.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)\.(heic|heif)(\?.*)?$/i);
+  if (!m) return u;
+  const rest = m[2];
+  // already has a transformation segment? (does not start with v<digits>/) -> keep it, still force jpg
+  const withTf = /^v\d+\//.test(rest) ? "f_jpg,q_auto/" + rest : "f_jpg," + rest;
+  return m[1] + withTf + ".jpg";
+}
+function cldFixDeep(v) {
+  if (typeof v === "string") return cldBrowserSafeUrl(v);
+  if (Array.isArray(v)) return v.map(cldFixDeep);
+  if (v && typeof v === "object" && !(v.toDate)) {
+    const o = {};
+    for (const k in v) o[k] = cldFixDeep(v[k]);
+    return o;
+  }
+  return v;
 }
 
 // ---------- Static reference data (seeded to Firestore on first admin login) ----------
@@ -1062,7 +1085,7 @@ function switchTab(tab) {
 function listenToPasses() {
   if (unsubPasses) unsubPasses();
   unsubPasses = db.collection("passes").orderBy("created_at", "desc").onSnapshot(snap => {
-    allPasses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allPasses = snap.docs.map(d => cldFixDeep({ id: d.id, ...d.data() }));
     if (currentTab === "passes") renderPassesView();
     if (currentTab === "tracking") renderTrackingView();
     if (currentTab === "dashboard") renderDashboardView();
