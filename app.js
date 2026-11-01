@@ -334,6 +334,12 @@ const I18N_DICT = {
 "✔ ยืนยันตรวจของแล้ว ส่งต่อให้ผู้ขอ": "✔ Inspection confirmed — pass to requester",
 "รปภ./Safety และผู้ขอตรวจของแล้ว รอท่านรับทราบก่อนส่งต่อ Safety Department Head ปิดคำขอ": "Security/Safety and the requester have inspected the items. Please acknowledge before it goes to the Safety Department Head for closing.",
 "รอผู้ขอตรวจสอบของนำเข้า": "Waiting for requester to inspect returned items",
+"ผู้อนุมัติขั้น 1 คนที่ 2 (ไม่บังคับ)": "2nd Level 1 approver (optional)",
+"ชื่อผู้อนุมัติคนที่ 2": "2nd approver name",
+"Email คนที่ 2": "2nd approver email",
+"ผู้อนุมัติคนที่ 2: กรุณากรอกชื่อและ Email ให้ครบและถูกต้อง": "2nd approver: please enter a valid name and email",
+"— เลือกผู้อนุมัติขั้น 1 —": "— Select Level 1 approver —",
+"กรุณาเลือกผู้อนุมัติขั้น 1 ก่อนส่งคำขอ": "Please select a Level 1 approver before submitting",
 "ชื่อ นามสกุล": "First Last",
 "รปภ.": "Security",
 "ผจก.แผนก": "Dept. Manager",
@@ -698,6 +704,18 @@ const APPROVER_DIRECTORY = {
 // Fetch Firestore overrides for DEPARTMENTS / L2_APPROVERS and apply them to the live arrays above.
 // Called once at startup; awaited before resolving a user's role so newly-added/changed approvers get
 // correct permissions immediately on their next login — no code change or redeploy needed.
+// All Level-1 approvers of a department (primary + optional second). Returns [{email,name}].
+function l1ApproversOf(dept) {
+  const d = typeof dept === "string" ? DEPARTMENTS.find(x => x.id === dept) : dept;
+  if (!d) return [];
+  const out = [];
+  if (d.l1_email) out.push({ email: d.l1_email, name: d.l1_name });
+  if (d.l1b_email && d.l1b_email !== d.l1_email) out.push({ email: d.l1b_email, name: d.l1b_name || d.l1b_email });
+  return out;
+}
+function l1NamesOf(dept) { return l1ApproversOf(dept).map(a => a.name).join(" / "); }
+function isL1ApproverOf(dept, email) { return l1ApproversOf(dept).some(a => a.email === email); }
+
 async function loadDynamicConfig() {
   try {
     const deptSnap = await db.collection("departments").get();
@@ -707,6 +725,8 @@ async function loadDynamicConfig() {
       if (target) {
         if (data.l1_email) target.l1_email = data.l1_email.toLowerCase();
         if (data.l1_name) target.l1_name = data.l1_name;
+        // Optional 2nd Level-1 approver (saved as l1b_*; empty string = removed)
+        if (data.l1b_email !== undefined) { target.l1b_email = (data.l1b_email || "").toLowerCase(); target.l1b_name = data.l1b_name || ""; }
       }
     });
   } catch (e) { console.error("Failed to load departments config:", e); }
@@ -1010,12 +1030,12 @@ async function resolveUserProfileBase(email, authDisplayName) {
   let name = dirEntry ? dirEntry.name : null;
 
   // Dynamic dept-manager check — source of truth is the live DEPARTMENTS list (editable in Admin Settings)
-  const deptMatches = DEPARTMENTS.filter(d => d.l1_email === email);
+  const deptMatches = DEPARTMENTS.filter(d => isL1ApproverOf(d, email));
   if (deptMatches.length > 0) {
     roles.push("dept_manager");
     department = deptMatches.length === 1 ? deptMatches[0].id : deptMatches.map(d => d.id);
     if (!dashboard || dashboard === "none") dashboard = "own_dept";
-    if (!name) name = deptMatches[0].l1_name;
+    if (!name) name = (l1ApproversOf(deptMatches[0]).find(a => a.email === email) || {}).name || deptMatches[0].l1_name;
   }
 
   // Dynamic L2-approver check — source of truth is the live L2_APPROVERS list (editable in Admin Settings)
@@ -1396,7 +1416,15 @@ function renderNewRequestView() {
 function onDeptChange() {
   const deptId = document.getElementById("reqDept").value;
   const dept = DEPARTMENTS.find(d => d.id === deptId);
-  document.getElementById("reqL1Box").textContent = dept ? (dept.l1_name + " (" + dept.name_th + ")") : "— เลือกแผนกก่อน —";
+  const box = document.getElementById("reqL1Box");
+  const list = dept ? l1ApproversOf(dept) : [];
+  if (list.length > 1) {
+    // Department has 2 Level-1 approvers: requester MUST choose one
+    box.innerHTML = '<select id="reqL1Pick" style="width:100%;"><option value="">— เลือกผู้อนุมัติขั้น 1 —</option>' +
+      list.map(a => '<option value="' + escapeHtml(a.email) + '">' + escapeHtml(a.name) + '</option>').join("") + '</select>';
+  } else {
+    box.textContent = dept ? (l1NamesOf(dept) + " (" + dept.name_th + ")") : "— เลือกแผนกก่อน —";
+  }
 }
 
 function onPurposeChange() {
@@ -1545,6 +1573,13 @@ async function submitNewRequest() {
   }
 
   const deptObj = DEPARTMENTS.find(d => d.id === dept);
+  const l1List = l1ApproversOf(deptObj);
+  let chosenL1 = l1List[0];
+  if (l1List.length > 1) {
+    const pickEl = document.getElementById("reqL1Pick");
+    chosenL1 = l1List.find(a => pickEl && a.email === pickEl.value);
+    if (!chosenL1) return showToast("กรุณาเลือกผู้อนุมัติขั้น 1 ก่อนส่งคำขอ", "err");
+  }
   const l2 = skipL2 ? null : L2_APPROVERS.find(a => a.email === l2email);
   const skipValue = !!(rt && rt.skip_value);
 
@@ -1563,7 +1598,7 @@ async function submitNewRequest() {
       purpose_detail: purposeDetail || null,
       removal_date: removalDate,
       destination: destination, vehicle_plate: vehicle,
-      approver_l1_email: deptObj.l1_email, approver_l1_name: deptObj.l1_name,
+      approver_l1_email: chosenL1.email, approver_l1_name: chosenL1.name,
       approver_l2_email: skipL2 ? null : l2.email, approver_l2_name: skipL2 ? null : l2.name,
       skip_l2_approval: skipL2,
       note: note,
@@ -1578,8 +1613,8 @@ async function submitNewRequest() {
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast("ส่งคำขอสำเร็จ (" + passNo + ")", "ok");
-    sendNotifyEmail(
-      deptObj.l1_email, deptObj.l1_name,
+    sendNotifyEmailMulti(
+      [chosenL1],
       biSubject("มีคำขอนำของออกใหม่รออนุมัติ", "New removal request awaiting approval") + " - " + passNo,
       biMessage(
         name + " (" + deptObj.name_th + ") ส่งคำขอนำของออก กรุณาเข้าระบบเพื่อตรวจสอบและอนุมัติขั้นที่ 1",
@@ -1622,7 +1657,7 @@ function openPassDetail(id) {
   const canCancelRequest = isOwnerLike &&
     ["pending_l1", "pending_l2", "approved"].includes(p.status) && !p.ext_status;
   const canEditVehicle = isTestAdmin || currentProfile.email === p.requester_email || isDelegateFor(p) ||
-    currentProfile.email === p.approver_l1_email || currentProfile.email === p.approver_l2_email ||
+    currentProfile.email === p.approver_l1_email || isL1ApproverOf(p.requester_dept, currentProfile.email) || currentProfile.email === p.approver_l2_email ||
     roles.includes("security") || roles.includes("return_confirmer");
 
   const blocks = [];
@@ -1792,7 +1827,7 @@ function openPassDetail(id) {
 
       '<div class="detailSection">' +
         '<h4>ผู้อนุมัติ</h4>' +
-        '<div class="kv"><span class="k">ขั้น 1</span><span>' + (p.l1_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(p.approver_l1_name) + ' · ' + fmtDateTime(p.l1_approved_at) : escapeHtml(p.approver_l1_name) + ' (รอดำเนินการ)') + '</span></div>' +
+        '<div class="kv"><span class="k">ขั้น 1</span><span>' + (p.l1_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(l1ActorName(p)) + ' · ' + fmtDateTime(p.l1_approved_at) : escapeHtml(p.approver_l1_name || l1PendingNames(p)) + ' (รอดำเนินการ)') + '</span></div>' +
         (p.skip_l2_approval ?
           '<div class="kv"><span class="k">ขั้น 2</span><span style="color:var(--muted);">ไม่ต้องอนุมัติ (Not required)</span></div>' :
           '<div class="kv"><span class="k">ขั้น 2</span><span>' + (p.l2_approved_at ? 'อนุมัติโดย/Approved by ' + escapeHtml(p.approver_l2_name) + ' · ' + fmtDateTime(p.l2_approved_at) : escapeHtml(p.approver_l2_name) + ' (รอดำเนินการ)') + '</span></div>') +
@@ -1872,8 +1907,8 @@ async function cancelRequest(id) {
     closeModal();
     if (p) {
       const recipients = [];
-      if (p.approver_l1_email) recipients.push({ email: p.approver_l1_email, name: p.approver_l1_name });
-      if (p.approver_l2_email && p.approver_l2_email !== p.approver_l1_email) recipients.push({ email: p.approver_l2_email, name: p.approver_l2_name });
+      l1RecipientsFor(p).forEach(a => { if (a.email) recipients.push(a); });
+      if (p.approver_l2_email && !recipients.some(r => r.email === p.approver_l2_email)) recipients.push({ email: p.approver_l2_email, name: p.approver_l2_name });
       sendNotifyEmailMulti(
         recipients,
         biSubject("คำขอถูกยกเลิกโดยผู้ขอ", "Request cancelled by requester") + " - " + p.pass_no,
@@ -1908,8 +1943,8 @@ async function submitExtensionRequest(id) {
     showToast("ส่งคำขอขยายเวลาแล้ว รอผู้อนุมัติขั้น 1", "ok");
     closeModal();
     if (p) {
-      sendNotifyEmail(
-        p.approver_l1_email, p.approver_l1_name,
+      sendNotifyEmailMulti(
+        l1RecipientsFor(p),
         biSubject("มีคำขอขยายเวลานำของกลับ", "Return-date extension request submitted") + " - " + p.pass_no,
         biMessage(
           p.requester_name + " ขอขยายเวลานำของกลับ (ครั้งที่ " + ((p.ext_count || 0) + 1) + ") เป็นวันที่ " + newDate + " เหตุผล: " + reason,
@@ -1997,6 +2032,17 @@ async function rejectExtension(id, stage) {
       );
     }
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
+}
+
+function l1ActorName(p) {
+  const a = l1ApproversOf(p.requester_dept).find(x => x.email === p.l1_approved_by);
+  return a ? a.name : p.approver_l1_name;
+}
+function l1PendingNames(p) { return l1NamesOf(p.requester_dept) || p.approver_l1_name; }
+function l1RecipientsFor(p) {
+  // Only the approver the requester chose (stored on the pass) is notified
+  if (p.approver_l1_email) return [{ email: p.approver_l1_email, name: p.approver_l1_name }];
+  return l1ApproversOf(p.requester_dept);
 }
 
 function closeModal() { document.getElementById("modalRoot").innerHTML = ""; window._activePassId = null; resetItemStagePhotos(); }
@@ -2259,8 +2305,8 @@ async function submitSelfCheckReturn(id) {
     resetItemStagePhotos();
     closeModal();
     if (p && newFlow) {
-      sendNotifyEmail(
-        p.approver_l1_email, p.approver_l1_name,
+      sendNotifyEmailMulti(
+        l1RecipientsFor(p),
         biSubject("รอรับทราบและอนุมัติปิดคำขอ", "Awaiting acknowledgement to close the request") + " - " + p.pass_no,
         biMessage(
           "รปภ./Safety และ " + p.requester_name + " ตรวจสอบของที่นำกลับเรียบร้อยแล้ว กรุณาเข้าระบบเพื่อรับทราบและอนุมัติปิดคำขอ",
@@ -2312,8 +2358,8 @@ async function confirmReturn(id) {
         p.pass_no
       );
     } else if (p) {
-      sendNotifyEmail(
-        p.approver_l1_email, p.approver_l1_name,
+      sendNotifyEmailMulti(
+        l1RecipientsFor(p),
         biSubject("รอรับทราบและอนุมัติปิดคำขอ", "Awaiting acknowledgement to close the request") + " - " + p.pass_no,
         biMessage(
           "รปภ./Safety ตรวจสอบของที่นำกลับของ " + p.requester_name + " เรียบร้อยแล้ว กรุณาเข้าระบบเพื่อรับทราบและอนุมัติปิดคำขอ",
@@ -2342,8 +2388,8 @@ async function approveReturnL1(id) {
         ehsMgr.l1_email, ehsMgr.l1_name,
         biSubject("รอปิดคำขอ (ขั้นตอนสุดท้าย)", "Awaiting final closing approval") + " - " + p.pass_no,
         biMessage(
-          "คำขอนำของกลับของ " + p.requester_name + " ผ่านการรับทราบจาก " + p.approver_l1_name + " แล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย",
-          "The return request for " + p.requester_name + " has been acknowledged by " + p.approver_l1_name + ". Please approve closing the request as the final step."
+          "คำขอนำของกลับของ " + p.requester_name + " ผ่านการรับทราบจาก " + l1ActorName({requester_dept:p.requester_dept,l1_approved_by:currentProfile.email,approver_l1_name:p.approver_l1_name}) + " แล้ว รอท่านอนุมัติปิดคำขอเป็นขั้นตอนสุดท้าย",
+          "The return request for " + p.requester_name + " has been acknowledged by " + l1ActorName({requester_dept:p.requester_dept,l1_approved_by:currentProfile.email,approver_l1_name:p.approver_l1_name}) + ". Please approve closing the request as the final step."
         ),
         p.pass_no
       );
@@ -2393,9 +2439,8 @@ async function approveReturnEhs(id) {
     closeModal();
     if (p) {
       const closingRecipients = [
-        { email: p.requester_email, name: p.requester_name },
-        { email: p.approver_l1_email, name: p.approver_l1_name }
-      ];
+        { email: p.requester_email, name: p.requester_name }
+      ].concat(l1RecipientsFor(p));
       sendNotifyEmailMulti(
         closingRecipients,
         biSubject("ปิดคำขอสมบูรณ์", "Request closed successfully") + " - " + p.pass_no,
@@ -2425,8 +2470,8 @@ async function rejectReturnEhs(id) {
     showToast("ส่งกลับให้ผจก.แผนกพิจารณาใหม่แล้ว", "ok");
     closeModal();
     if (p) {
-      sendNotifyEmail(
-        p.approver_l1_email, p.approver_l1_name,
+      sendNotifyEmailMulti(
+        l1RecipientsFor(p),
         biSubject("คำขอถูกส่งกลับให้พิจารณาใหม่", "Request sent back for reconsideration") + " - " + p.pass_no,
         biMessage(
           "Safety Department Head ส่งคำขอกลับให้พิจารณาใหม่ เหตุผล: " + reason,
@@ -2639,6 +2684,12 @@ function deptApproverRowHtml(d) {
     '<div class="field" style="margin:0;"><label>ชื่อผู้อนุมัติ</label><input type="text" id="' + rowId + '_name" value="' + escapeHtml(d.l1_name) + '"></div>' +
     '<div class="field" style="margin:0;"><label>Email</label><input type="email" id="' + rowId + '_email" value="' + escapeHtml(d.l1_email) + '"></div>' +
     '<button class="btnGhost" style="padding:9px 14px;" onclick="saveDeptApprover(\'' + d.id + '\')">Save</button>' +
+  '</div>' +
+  '<div style="display:grid;grid-template-columns:1.2fr 1.3fr 1.6fr auto;gap:8px;align-items:end;padding:0 0 10px;border-bottom:1px solid var(--border);margin-top:-1px;">' +
+    '<div style="font-size:13.5px;color:var(--muted,#667);padding-bottom:9px;">ผู้อนุมัติขั้น 1 คนที่ 2 (ไม่บังคับ)</div>' +
+    '<div class="field" style="margin:0;"><input type="text" id="' + rowId + '_bname" placeholder="ชื่อผู้อนุมัติคนที่ 2" value="' + escapeHtml(d.l1b_name || "") + '"></div>' +
+    '<div class="field" style="margin:0;"><input type="email" id="' + rowId + '_bemail" placeholder="Email คนที่ 2" value="' + escapeHtml(d.l1b_email || "") + '"></div>' +
+    '<span></span>' +
   '</div>';
 }
 
@@ -2670,10 +2721,15 @@ async function saveDeptApprover(deptId) {
   const email = emailEl.value.trim().toLowerCase();
   if (!name || !email) return showToast("กรุณากรอกชื่อและ Email ให้ครบ", "err");
   if (!email.includes("@")) return showToast("รูปแบบ Email ไม่ถูกต้อง", "err");
+  const bNameEl = document.getElementById("dept_" + deptId + "_bname");
+  const bEmailEl = document.getElementById("dept_" + deptId + "_bemail");
+  const bName = bNameEl ? bNameEl.value.trim() : "";
+  const bEmail = bEmailEl ? bEmailEl.value.trim().toLowerCase() : "";
+  if ((bName || bEmail) && (!bName || !bEmail || !bEmail.includes("@"))) return showToast("ผู้อนุมัติคนที่ 2: กรุณากรอกชื่อและ Email ให้ครบและถูกต้อง", "err");
   try {
-    await db.collection("departments").doc(deptId).set({ l1_name: name, l1_email: email }, { merge: true });
+    await db.collection("departments").doc(deptId).set({ l1_name: name, l1_email: email, l1b_name: bName, l1b_email: bEmail }, { merge: true });
     const target = DEPARTMENTS.find(d => d.id === deptId);
-    if (target) { target.l1_name = name; target.l1_email = email; }
+    if (target) { target.l1_name = name; target.l1_email = email; target.l1b_name = bName; target.l1b_email = bEmail; }
     showToast("บันทึกผู้อนุมัติขั้น 1 ของแผนกนี้แล้ว", "ok");
   } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "err"); }
 }
