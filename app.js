@@ -340,6 +340,11 @@ const I18N_DICT = {
 "ผู้อนุมัติคนที่ 2: กรุณากรอกชื่อและ Email ให้ครบและถูกต้อง": "2nd approver: please enter a valid name and email",
 "— เลือกผู้อนุมัติขั้น 1 —": "— Select Level 1 approver —",
 "กรุณาเลือกผู้อนุมัติขั้น 1 ก่อนส่งคำขอ": "Please select a Level 1 approver before submitting",
+"🔔 เปิดการแจ้งเตือนเมื่อมีใบนำของออกที่ต้องดำเนินการ": "🔔 Turn on notifications for removal requests that need your action",
+"เปิดการแจ้งเตือน": "Enable notifications",
+"เปิดการแจ้งเตือนบนเครื่องนี้แล้ว": "Notifications enabled on this device",
+"เปิดการแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง": "Could not enable notifications. Please try again",
+"ไม่ได้อนุญาตการแจ้งเตือน (เปลี่ยนได้ที่ตั้งค่าของเครื่อง)": "Notifications not allowed (you can change this in device settings)",
 "ชื่อ นามสกุล": "First Last",
 "รปภ.": "Security",
 "ผจก.แผนก": "Dept. Manager",
@@ -558,6 +563,7 @@ async function emailjsSendWithFailover(params, logLabel) {
 
 async function sendNotifyEmail(toEmail, toName, subject, message, passNo) {
   if (!toEmail) return;
+  sendPush([{ email: toEmail }], subject, message, passNo);
   await emailjsSendWithFailover({
     to_email: toEmail,
     to_name: toName || toEmail,
@@ -575,6 +581,7 @@ async function sendNotifyEmail(toEmail, toName, subject, message, passNo) {
 async function sendNotifyEmailMulti(recipients, subject, message, passNo) {
   const list = (recipients || []).filter(r => r && r.email);
   if (list.length === 0) return;
+  sendPush(list, subject, message, passNo);
   await emailjsSendWithFailover({
     to_email: list.map(r => r.email).join(","),
     to_name: list.map(r => r.name).filter(Boolean).join(", "),
@@ -583,6 +590,121 @@ async function sendNotifyEmailMulti(recipients, subject, message, passNo) {
     pass_no: passNo || "",
     link: window.location.origin + window.location.pathname
   }, subject + " -> " + list.map(r => r.email).join(","));
+}
+
+
+// ---------- Push notifications (Firebase Cloud Messaging) ----------
+// Fill these two values after the one-time setup (see PPR_Push_Setup_Guide). Empty = push disabled.
+const PUSH_CONFIG = {
+  vapidKey: "",   // Firebase Console > Project settings > Cloud Messaging > Web Push certificates > Key pair
+  workerUrl: ""   // Cloudflare Worker URL that sends the push, e.g. https://ppr-push.xxxx.workers.dev
+};
+let _fcmMessaging = null;
+let _fcmRegistration = null;
+
+function pushSupported() {
+  return !!(PUSH_CONFIG.vapidKey && PUSH_CONFIG.workerUrl && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported());
+}
+function isIOSDevice() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+function isStandalone() { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; }
+
+async function savePushToken(email) {
+  try {
+    if (!_fcmRegistration) _fcmRegistration = await navigator.serviceWorker.register("firebase-messaging-sw.js");
+    if (!_fcmMessaging) {
+      _fcmMessaging = firebase.messaging();
+      _fcmMessaging.onMessage((payload) => {
+        const d = payload.data || {};
+        showToast("🔔 " + (d.title ? d.title + ": " : "") + (d.body || ""), "ok");
+      });
+    }
+    const token = await _fcmMessaging.getToken({ vapidKey: PUSH_CONFIG.vapidKey, serviceWorkerRegistration: _fcmRegistration });
+    if (!token) return null;
+    localStorage.setItem("ppr_fcm_token", token);
+    await db.collection("fcmTokens").doc(email).set({
+      tokens: firebase.firestore.FieldValue.arrayUnion(token),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return token;
+  } catch (e) { console.warn("Push token registration failed:", e); return null; }
+}
+
+async function enablePushClick() {
+  if (!currentUser) return;
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") {
+    const t = await savePushToken((currentUser.email || "").toLowerCase());
+    showToast(t ? "เปิดการแจ้งเตือนบนเครื่องนี้แล้ว" : "เปิดการแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง", t ? "ok" : "err");
+  } else {
+    showToast("ไม่ได้อนุญาตการแจ้งเตือน (เปลี่ยนได้ที่ตั้งค่าของเครื่อง)", "err");
+  }
+  initPushBanner();
+}
+
+function dismissPushBanner() { try { localStorage.setItem("ppr_push_dismiss", String(Date.now())); } catch (e) {} initPushBanner(); }
+
+function initPushBanner() {
+  const el = document.getElementById("pushBanner");
+  if (!el) return;
+  el.style.display = "none";
+  if (!currentUser) return;
+  if (!(PUSH_CONFIG.vapidKey && PUSH_CONFIG.workerUrl)) return;
+  const email = (currentUser.email || "").toLowerCase();
+  if (isIOSDevice() && !isStandalone()) {
+    // iOS only allows notifications for apps added to the Home Screen
+    return;
+  }
+  if (!pushSupported()) return;
+  if (Notification.permission === "granted") { savePushToken(email); return; }
+  if (Notification.permission === "denied") return;
+  let dismissed = 0;
+  try { dismissed = parseInt(localStorage.getItem("ppr_push_dismiss") || "0", 10); } catch (e) {}
+  if (dismissed && Date.now() - dismissed < 3 * 24 * 3600 * 1000) return;
+  el.innerHTML = '<span>🔔 เปิดการแจ้งเตือนเมื่อมีใบนำของออกที่ต้องดำเนินการ</span>' +
+    '<button type="button" onclick="enablePushClick()">เปิดการแจ้งเตือน</button>' +
+    '<button type="button" class="x" onclick="dismissPushBanner()" title="ปิด">✕</button>';
+  el.style.display = "flex";
+}
+
+async function removeMyPushToken() {
+  try {
+    const token = localStorage.getItem("ppr_fcm_token");
+    if (token && currentUser) {
+      await db.collection("fcmTokens").doc((currentUser.email || "").toLowerCase()).set({ tokens: firebase.firestore.FieldValue.arrayRemove(token) }, { merge: true });
+    }
+    localStorage.removeItem("ppr_fcm_token");
+  } catch (e) {}
+}
+
+// Sends a push to everyone in `recipients` (same people who get the email). Fire-and-forget.
+async function sendPush(recipients, subject, message, passNo) {
+  try {
+    if (!(PUSH_CONFIG.vapidKey && PUSH_CONFIG.workerUrl) || !currentUser) return;
+    const emails = Array.from(new Set((recipients || []).map(r => (r && r.email || "").toLowerCase()).filter(Boolean)));
+    if (emails.length === 0) return;
+    const docs = await Promise.all(emails.map(e => db.collection("fcmTokens").doc(e).get()));
+    const tokens = [];
+    docs.forEach(d => { if (d.exists) (d.data().tokens || []).forEach(t => tokens.push({ token: t, email: d.id })); });
+    if (tokens.length === 0) return;
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch(PUSH_CONFIG.workerUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+      body: JSON.stringify({
+        tokens: tokens.map(t => t.token),
+        title: "Plant Property Removal" + (passNo ? " · " + passNo : ""),
+        body: subject || "",
+        tag: passNo || "ppr",
+        link: window.location.origin + window.location.pathname
+      })
+    });
+    const out = await res.json().catch(() => ({}));
+    // Clean up tokens that are no longer valid (app uninstalled / permission revoked)
+    (out.invalid || []).forEach(bad => {
+      const owner = tokens.find(t => t.token === bad);
+      if (owner) db.collection("fcmTokens").doc(owner.email).set({ tokens: firebase.firestore.FieldValue.arrayRemove(bad) }, { merge: true }).catch(() => {});
+    });
+  } catch (e) { console.warn("sendPush failed:", e); }
 }
 
 // ---------- Cloudinary ----------
@@ -939,8 +1061,9 @@ function translateAuthErr(e) {
   return "เกิดข้อผิดพลาด: " + (e.message || code);
 }
 
-function doLogout() {
+async function doLogout() {
   if (unsubPasses) unsubPasses();
+  await removeMyPushToken();
   auth.signOut();
 }
 
@@ -1006,6 +1129,7 @@ auth.onAuthStateChanged(async (user) => {
     document.getElementById("adminTabBtn").style.display = currentProfile.roles.includes("test_admin") ? "" : "none";
     applyTabVisibility();
     listenToPasses();
+    initPushBanner();
     switchTab(defaultTabFor(currentProfile));
   } else {
     currentUser = null; currentProfile = null;

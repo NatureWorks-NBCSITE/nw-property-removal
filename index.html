@@ -4,9 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Plant Property Removal | NatureWorks NBC</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1F497D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Property Removal">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 @font-face{font-family:"ThaiAdj";src:local("Leelawadee UI"),local("Tahoma"),local("Noto Sans Thai"),local("Sarabun");unicode-range:U+0E00-0E7F;size-adjust:118%;}
@@ -47,7 +56,10 @@ a{color:var(--teal-dark);}
 #appShell{display:none;min-height:100vh;flex-direction:column;}
 header.topbar{background:#fff;border-bottom:1px solid var(--border);padding:14px 24px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;}
 .brand{display:flex;align-items:center;gap:10px;}
-.brand .dot{width:30px;height:30px;border-radius:50%;background:conic-gradient(var(--teal),var(--navy),var(--gold),var(--teal));flex-shrink:0;}
+.brand .dot{width:38px;height:38px;border-radius:10px;background:url(icons/icon-192.png) center/cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.25);}
+.pushBanner{display:none;align-items:center;gap:10px;flex-wrap:wrap;background:#fff8e1;border-bottom:1px solid #ffe082;padding:10px 16px;font-size:15px;color:#5d4037;}
+.pushBanner button{padding:7px 14px;border:0;border-radius:8px;background:#1F497D;color:#fff;font-weight:600;font-size:14.5px;cursor:pointer;}
+.pushBanner .x{background:transparent;color:#5d4037;padding:4px 8px;font-size:18px;}
 .brand-text h1{font-size:17.5px;margin:0;color:var(--navy);font-weight:700;}
 .brand-text .th{font-size:16px;color:var(--muted);}
 .logoStack{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;}
@@ -241,17 +253,18 @@ main{flex:1;padding:20px 24px 60px;max-width:1080px;width:100%;margin:0 auto;}
         <button class="linkBtn" onclick="toggleAuthMode('login')">กลับไปหน้าเข้าสู่ระบบ</button>
       </div>
     </div>
-    <div class="devBy">Developed by: Kannikar Thaicharoen<br><span class="devRole">Operating Discipline (OD) and Training Coordinator</span><br>v5.5</div>
+    <div class="devBy">Developed by: Kannikar Thaicharoen<br><span class="devRole">Operating Discipline (OD) and Training Coordinator</span><br>v6.0</div>
   </div>
 </div>
 
 <!-- ============ APP SHELL ============ -->
 <div id="appShell">
+  <div class="pushBanner" id="pushBanner"></div>
   <header class="topbar">
     <div class="brand">
       <div class="logoStack">
         <div class="dot"></div>
-        <div class="versionBadge">v5.5</div>
+        <div class="versionBadge">v6.0</div>
       </div>
       <div class="brand-text">
         <h1>Plant Property Removal</h1>
