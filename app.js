@@ -601,6 +601,7 @@ const PUSH_CONFIG = {
 };
 let _fcmMessaging = null;
 let _fcmRegistration = null;
+let _pushLastError = "";
 
 function pushSupported() {
   return !!(PUSH_CONFIG.vapidKey && PUSH_CONFIG.workerUrl && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported());
@@ -626,7 +627,7 @@ async function savePushToken(email) {
       updated_at: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     return token;
-  } catch (e) { console.warn("Push token registration failed:", e); return null; }
+  } catch (e) { console.warn("Push token registration failed:", e); _pushLastError = (e && (e.code || e.message)) || String(e); return null; }
 }
 
 async function enablePushClick() {
@@ -634,7 +635,7 @@ async function enablePushClick() {
   const perm = await Notification.requestPermission();
   if (perm === "granted") {
     const t = await savePushToken((currentUser.email || "").toLowerCase());
-    showToast(t ? "เปิดการแจ้งเตือนบนเครื่องนี้แล้ว" : "เปิดการแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง", t ? "ok" : "err");
+    showToast(t ? "เปิดการแจ้งเตือนบนเครื่องนี้แล้ว" : ("เปิดการแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง" + (_pushLastError ? " [" + String(_pushLastError).slice(0, 140) + "]" : "")), t ? "ok" : "err");
   } else {
     showToast("ไม่ได้อนุญาตการแจ้งเตือน (เปลี่ยนได้ที่ตั้งค่าของเครื่อง)", "err");
   }
