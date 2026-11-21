@@ -656,7 +656,12 @@ function initPushBanner() {
     return;
   }
   if (!pushSupported()) return;
-  if (Notification.permission === "granted") { savePushToken(email); return; }
+  if (Notification.permission === "granted") {
+    savePushToken(email).then(t => {
+      if (!t && _pushLastError) showToast("การแจ้งเตือนยังใช้ไม่ได้ [" + String(_pushLastError).slice(0, 140) + "]", "err");
+    });
+    return;
+  }
   if (Notification.permission === "denied") return;
   let dismissed = 0;
   try { dismissed = parseInt(localStorage.getItem("ppr_push_dismiss") || "0", 10); } catch (e) {}
