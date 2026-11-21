@@ -596,8 +596,8 @@ async function sendNotifyEmailMulti(recipients, subject, message, passNo) {
 // ---------- Push notifications (Firebase Cloud Messaging) ----------
 // Fill these two values after the one-time setup (see PPR_Push_Setup_Guide). Empty = push disabled.
 const PUSH_CONFIG = {
-  vapidKey: "",   // Firebase Console > Project settings > Cloud Messaging > Web Push certificates > Key pair
-  workerUrl: ""   // Cloudflare Worker URL that sends the push, e.g. https://ppr-push.xxxx.workers.dev
+  vapidKey: "BNXOkQAw_mCFp7POmqxQRsUJj-G1lym_yS2Pzji8ol3n0XVIXTM47Zh6hCjAQ1S7lfs9BCy6g3yhjyo62SXtukw",   // Firebase Console > Project settings > Cloud Messaging > Web Push certificates > Key pair
+  workerUrl: "https://ppr-push.ntrap-application.workers.dev"   // Cloudflare Worker URL that sends the push, e.g. https://ppr-push.xxxx.workers.dev
 };
 let _fcmMessaging = null;
 let _fcmRegistration = null;
